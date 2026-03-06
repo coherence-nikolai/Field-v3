@@ -563,7 +563,64 @@ function showBackBtn() {
 // OBSERVE MOVEMENT — three-signal attention
 // ══════════════════════════════════════
 
-function buildObsScreen(){ /* patched: preserve original HTML layout */ }
+function buildObsScreen() {
+  const screen = document.getElementById('s-observe');
+  const t = lang === 'en';
+  const modeHint = obsMode === 'kasina'
+    ? (t ? 'One point.<br>Hold it gently.' : 'Un punto.<br>Sostenlo suavemente.')
+    : (t ? 'One particle.<br>Just watch it.' : 'Una partícula.<br>Solo obsérvala.');
+  screen.innerHTML = `
+    <div id="obs-hint-txt" style="position:fixed;top:42%;left:50%;transform:translate(-50%,-50%);
+      text-align:center;opacity:0;transition:opacity 1.5s ease;z-index:20;pointer-events:none;">
+      <div style="font-size:clamp(22px,6vw,30px);font-weight:300;letter-spacing:.12em;
+        color:rgba(201,169,110,.5);margin-bottom:18px;">${obsMode==='kasina'?'·':'◎'}</div>
+      <div style="font-size:clamp(15px,3.8vw,19px);letter-spacing:.10em;
+        color:rgba(240,230,208,.5);line-height:1.9;">${modeHint}</div>
+    </div>
+    <div id="clarity-ring"></div>
+    <div id="obs-timer" style="position:fixed;top:72px;left:50%;transform:translateX(-50%);
+      font-size:clamp(14px,3.5vw,17px);letter-spacing:.14em;color:rgba(201,169,110,.3);
+      z-index:20;opacity:0;transition:opacity 1.5s ease;font-weight:300;pointer-events:none;"></div>
+    <!-- Signals row + i am here inline -->
+    <div id="obs-signals" style="position:fixed;bottom:clamp(52px,12vw,72px);left:50%;
+      transform:translateX(-50%);display:flex;gap:20px;align-items:center;
+      opacity:0;transition:opacity 1.5s ease;z-index:20;">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
+        <div class="sig-dot" id="sig-still"></div>
+        <div class="sig-label">${t?'still':'quieto'}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
+        <div class="sig-dot" id="sig-present"></div>
+        <div class="sig-label">${t?'present':'presente'}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
+        <div class="sig-dot" id="sig-affirm"></div>
+        <div class="sig-label">${t?'here':'aquí'}</div>
+      </div>
+      <button id="affirmBtn" onclick="doAffirm()"
+        style="background:none;border:1px solid rgba(201,169,110,.22);border-radius:30px;
+        padding:8px 18px;cursor:pointer;margin-left:8px;
+        -webkit-tap-highlight-color:transparent;touch-action:manipulation;
+        font-family:inherit;font-size:clamp(10px,2.5vw,12px);letter-spacing:.16em;
+        color:rgba(201,169,110,.45);transition:border-color .3s ease,color .3s ease;
+        min-height:36px;white-space:nowrap;">
+        ${t?'i am here':'estoy aquí'}
+      </button>
+    </div>
+    <div id="meter" style="position:fixed;bottom:clamp(112px,24vw,140px);left:50%;
+      transform:translateX(-50%);display:flex;gap:6px;align-items:center;
+      z-index:20;opacity:0;transition:opacity 1.5s ease;"></div>
+    <div id="scatter-text" style="position:fixed;top:36%;left:50%;transform:translateX(-50%);
+      font-size:clamp(13px,3.2vw,16px);letter-spacing:.14em;color:rgba(240,230,208,.45);
+      white-space:nowrap;opacity:0;transition:opacity 1s ease;z-index:20;pointer-events:none;"></div>
+    <div id="affirmWrap" style="display:none;"></div>
+  `;
+  buildObsMeter();
+  setTimeout(() => {
+    const timerEl = document.getElementById('obs-timer');
+    if (timerEl) { timerEl.style.transition = 'opacity 1.5s ease'; timerEl.style.opacity = '1'; }
+  }, 1000);
+}
 
 function buildObsMeter() {
   const m = document.getElementById('meter'); if (!m) return;
@@ -638,8 +695,7 @@ function buildObsSetupScreen() {
   const screen = document.getElementById('s-observe');
 
   // Build DOM directly — no onclick in innerHTML (iOS Safari blocks it)
-  // disabled layout overwrite
-// screen.innerHTML = '';
+  screen.innerHTML = '';
 
   const wrap = document.createElement('div');
   wrap.id = 'obs-setup';
@@ -1796,8 +1852,7 @@ const _buildObsSetupScreen = buildObsSetupScreen;
 buildObsSetupScreen = function() {
   const t = lang === 'en';
   const screen = document.getElementById('s-observe');
-  // disabled layout overwrite
-// screen.innerHTML = `
+  screen.innerHTML = `
     <div id="obs-setup" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:clamp(26px,7vw,42px);padding:clamp(24px,6vw,48px);width:100%;max-width:400px;margin:auto;opacity:0;transition:opacity 1.2s ease;pointer-events:all;">
       <div class="observe-alt-title">${t ? 'observe' : 'observar'}</div>
 
@@ -1889,8 +1944,7 @@ buildObsScreen = function() {
   const screen = document.getElementById('s-observe');
   const hint1 = t ? 'Recognise what is happening now.' : 'Reconoce lo que sucede ahora.';
   const hint2 = obsStorm ? (t ? 'Watch the storm.' : 'Mira la tormenta.') : (t ? 'Sense then tone.' : 'Sentido y luego tono.');
-  // disabled layout overwrite
-// screen.innerHTML = `
+  screen.innerHTML = `
     <div class="observe-alt-wrap">
       <div class="observe-alt-title">${t?'noting':'notar'}</div>
       <div class="observe-alt-hint">${hint1}<br>${hint2}</div>
