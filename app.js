@@ -495,7 +495,7 @@ function clearGhosts() {
     setTimeout(() => { gh.innerHTML = ''; gh.style.transition = ''; }, 450); }
 }
 function goHome() {
-  bgDimTarget = 1;
+  bgDimTarget = 0.82;
   const cameFromDecohere = currentMode === 'decohere-end';
   currentMode = 'home';
   clearAllBreath(); clearObserver(); clearAllDec();
@@ -552,7 +552,8 @@ function goHome() {
 }
 function initSpParticles(n) {
   spParticles = Array.from({length:n}, (_,i) => new SpParticle(i,n));
-  spParticles.forEach(p => { p.targetAlpha = 0.4+Math.random()*0.3; p.targetClarity = 0; });
+  const isHome = currentMode === 'home';
+  spParticles.forEach(p => { p.targetAlpha = isHome ? (0.18+Math.random()*0.14) : (0.4+Math.random()*0.3); p.targetClarity = 0; });
 }
 function showBackBtn() {
   document.getElementById('backBtn').style.opacity = '1';
@@ -1154,8 +1155,8 @@ function selectState(state) {
   const n = parseInt(localStorage.getItem('field_st_'+lang+'_'+state.name)||'0') + 1;
   localStorage.setItem('field_st_'+lang+'_'+state.name, n);
   totalObs++; localStorage.setItem('field_obs', totalObs);
-  document.getElementById('obsNote').innerHTML = n===1 ? t.obsFirst(state.name) : t.obsMany(state.name,n);
-  document.getElementById('obsNote5').innerHTML = n===1 ? t.obsFirst(state.name) : t.obsMany(state.name,n);
+  document.getElementById('obsNote').innerHTML = '';
+  document.getElementById('obsNote5').innerHTML = '';
   document.getElementById('closing').style.opacity = '0'; document.getElementById('closing').textContent = '';
   document.getElementById('qlabel6').textContent = t.qlabel;
   const chosen = spParticles[spChosen%Math.max(spParticles.length,1)];
@@ -1190,6 +1191,8 @@ function buildGhosts(chosen) {
   // Opacity controlled by caller — no direct set here
 }
 function showCollapseStage(n) {
+  if (n === 3) n = 4;
+  if (n === 5) n = 6;
   const current = document.querySelector('.cp-stage.on');
   if (n===4) {
     particlesHidden = true; bgDimTarget = 0.3;
@@ -1245,6 +1248,7 @@ function clearAllBreath(){ breathTimers.forEach(clearTimeout); breathTimers=[]; 
 function startBreath() {
   clearAllBreath(); breathRunning=true; breathCycle=0;
   const stateName=curStateName, t=TRANSLATIONS[lang];
+  spParticles.forEach(sp => { sp.targetAlpha = 0; });
   const p=document.getElementById('bp'), ripple=document.getElementById('bripple');
   const btext=document.getElementById('btext');
   p.className='bp neutral';
@@ -1266,13 +1270,13 @@ function startBreath() {
     }, delayMs||0);
   }
   function hideText(delayMs){ bDelay(()=>{ btext.style.transition='opacity 0.7s ease'; btext.style.opacity='0'; }, delayMs||0); }
-  const p1=lang==='en'?'inhale — return to the open field':'inhala — regresa al campo abierto';
-  const p2=lang==='en'?'exhale — collapse into '+stateName:'exhala — colapsa hacia '+stateName;
+  const p1=t.breathInhale;
+  const p2=t.breathHold;
   showText(p1,'dim',0); showText(p2,'dim',5000); hideText(10500); bDelay(cycle,11500);
   function cycle(){
     if(breathCycle>=3){
       breathRunning=false;
-      bDelay(()=>{ btext.style.transition='opacity 0.9s ease'; btext.style.opacity='0'; p.className='bp crystallised'; const tapEl=document.getElementById('tapNext'); bDelay(()=>{ tapEl.style.transition='opacity 0.8s ease'; tapEl.style.opacity='1'; },1800); },700);
+      bDelay(()=>{ btext.style.transition='opacity 0.9s ease'; btext.style.opacity='0'; p.className='bp crystallised'; initScene('state_chosen', spChosen); const tapEl=document.getElementById('tapNext'); bDelay(()=>{ tapEl.style.transition='opacity 0.8s ease'; tapEl.style.opacity='1'; },1800); },700);
       return;
     }
     breathCycle++;
@@ -1379,7 +1383,7 @@ function startDecAcknowledge() {
       ackLine.style.transition = 'opacity 1.4s ease';
 
       // Fade word in
-      setTimeout(() => { wordEl.style.opacity = '1'; }, 100);
+      setTimeout(() => { wordEl.style.opacity = '1'; wordEl.style.transform = 'translateY(0)'; wordEl.style.textShadow = '0 0 36px rgba(240,220,180,.28)'; }, 100);
       // Fade ack layer in (contains "yes. this is real.")
       setTimeout(() => { ackLayer.style.opacity = '1'; }, 200);
       // Fade ack line in after word settles
@@ -1412,9 +1416,8 @@ function startDecBreath(displayName) {
       `color 2s ease,filter ${dur}s ease ${dly}s`;
   });
 
-  // Hide back button during dissolution — no escape affordance
   const backBtn = document.getElementById('backBtn');
-  if (backBtn) { backBtn.style.opacity='0'; backBtn.style.pointerEvents='none'; }
+  if (backBtn) { backBtn.style.opacity='1'; backBtn.style.pointerEvents='all'; backBtn.onclick = () => startDecohere(); }
 
   // Cross-fade: ack layer out, breath layer in — word stays put
   ackLayer.style.transition = 'opacity 1.2s ease';
@@ -1477,8 +1480,7 @@ function startDecBreath(displayName) {
 
   function runCycle() {
     if (cycle >= 3) {
-      // Restore back button
-      if (backBtn) { backBtn.style.opacity='1'; backBtn.style.pointerEvents='all'; }
+      if (backBtn) { backBtn.style.opacity='1'; backBtn.style.pointerEvents='all'; backBtn.onclick = () => goHome(); }
 
       // Phase 3a: letter fragmentation — drift apart before dissolving
       dDelay(() => {
@@ -1719,40 +1721,12 @@ document.getElementById('wlcEnterBtn').addEventListener('click', e => {
   enterFromWelcome();
 });
 
-// ── INIT ──
-applyLang();
-
-// First launch: show welcome. Return visits: show home directly.
-if (!localStorage.getItem('field_welcomed')) {
-  buildWelcome();
-  // Start with welcome screen active, home inactive
-  document.getElementById('s-home').classList.remove('active');
-  document.getElementById('s-welcome').classList.add('active');
-  initSpParticles(12);
-  tryDrone();
-} else {
-  initSpParticles(12);
-  tryDrone();
-}
-
-
-window.addEventListener('keydown', e => {
-  if (e.key===' '||e.key==='Enter') {
-    const active = document.querySelector('.screen.active');
-    if (active && active.id==='s-init') advanceStep();
-  }
-});
-
 
 // ═══════════════════════════════════════
-// V3 ATTEMPT — additions kept close to the existing aesthetic
-// Observe: Noting + Storm
-// Decohere: body map
-// Settings: local API key + donate link
+// SAFE ADDITIONS — noting + body map, no layout rewrite
 // ═══════════════════════════════════════
 let obsStorm = false;
 let noteCount = 0;
-let notePhase = 'sense';
 let noteSense = '';
 let stormTimer = null;
 let decBodySpot = 'chest';
@@ -1799,177 +1773,98 @@ const BODY_SPOTS = {
   ]
 };
 const DEC_BODY_POS = {
-  head:   {particleTop:'28vh', wordTop:'28vh'},
-  throat: {particleTop:'38vh', wordTop:'38vh'},
-  chest:  {particleTop:'48vh', wordTop:'48vh'},
-  stomach:{particleTop:'58vh', wordTop:'58vh'},
-  pelvis: {particleTop:'68vh', wordTop:'68vh'}
+  head:   {wordTop:'24vh', particleTop:'36vh', dotsTop:'46vh', textTop:'60vh'},
+  throat: {wordTop:'30vh', particleTop:'42vh', dotsTop:'52vh', textTop:'66vh'},
+  chest:  {wordTop:'36vh', particleTop:'50vh', dotsTop:'60vh', textTop:'74vh'},
+  stomach:{wordTop:'42vh', particleTop:'58vh', dotsTop:'68vh', textTop:'82vh'},
+  pelvis: {wordTop:'48vh', particleTop:'66vh', dotsTop:'76vh', textTop:'88vh'}
 };
 
-const _applyLangV2 = applyLang;
-applyLang = function() {
-  _applyLangV2();
-  const homeSub = document.getElementById('homeFieldSub');
-  if (homeSub) homeSub.textContent = lang === 'en' ? 'Choose your practice.' : 'Elige tu práctica.';
-  let micro = document.getElementById('homeMicroSub');
-  if (!micro) {
-    micro = document.createElement('div');
-    micro.id = 'homeMicroSub';
-    const ref = document.getElementById('homeCount');
-    if (ref && ref.parentNode) ref.parentNode.insertBefore(micro, ref);
-  }
-  micro.textContent = lang === 'en' ? 'Notice what the moment needs.' : 'Nota lo que este momento necesita.';
-  const input = document.getElementById('apiKeyInput');
-  if (input) input.placeholder = lang === 'en' ? 'enter API key' : 'ingresa tu clave API';
-};
-
-const _goHomeV2 = goHome;
-goHome = function() {
-  clearStormTimer();
-  const wrap = document.getElementById('dec-word-wrap');
-  const bw = document.getElementById('dec-bp-wrap');
-  if (wrap) wrap.style.top = '50vh';
-  if (bw) bw.style.top = '';
-  _goHomeV2();
-};
-
-function openSettings() {
-  showBackBtn();
-  currentMode = 'settings';
-  const input = document.getElementById('apiKeyInput');
-  if (input) input.value = localStorage.getItem('field_api_key') || '';
-  showScreen('s-settings');
-}
-function saveApiKey() {
-  const val = document.getElementById('apiKeyInput')?.value || '';
-  localStorage.setItem('field_api_key', val.trim());
-}
-function clearApiKey() {
-  localStorage.removeItem('field_api_key');
-  const input = document.getElementById('apiKeyInput'); if (input) input.value = '';
-}
-function openDonate() {
-  window.open('https://ko-fi.com/', '_blank', 'noopener,noreferrer');
-}
-
-const _buildObsSetupScreen = buildObsSetupScreen;
+const _origBuildObsSetupScreen = buildObsSetupScreen;
 buildObsSetupScreen = function() {
-  const t = lang === 'en';
-  const screen = document.getElementById('s-observe');
-  screen.innerHTML = '';
-  const wrap = document.createElement('div');
-  wrap.id = 'obs-setup';
-  wrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:clamp(26px,7vw,42px);padding:clamp(24px,6vw,48px);width:100%;max-width:400px;margin:auto;opacity:0;transition:opacity 1.2s ease;';
-  const title = document.createElement('div');
-  title.className = 'observe-alt-title';
-  title.textContent = t ? 'observe' : 'observar';
-  wrap.appendChild(title);
-  const modeSection = document.createElement('div');
-  modeSection.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:14px;width:100%;';
-  const modeLabel = document.createElement('div');
-  modeLabel.style.cssText = 'font-size:clamp(12px,3vw,15px);letter-spacing:.14em;color:rgba(240,230,208,.35);';
-  modeLabel.textContent = t ? 'mode' : 'modo';
-  modeSection.appendChild(modeLabel);
-  const modeRow = document.createElement('div');
-  modeRow.className = 'sense-row';
-  [
-    {id:'drift', label:t?'drift':'deriva'},
-    {id:'kasina', label:'kasina'},
-    {id:'noting', label:t?'noting':'notar'}
-  ].forEach(m => {
-    const b = document.createElement('button');
-    b.id = 'obs-mode-' + m.id;
-    b.className = 'mode-chip';
-    b.textContent = m.label;
-    b.addEventListener('click', () => setObsMode(m.id));
-    modeRow.appendChild(b);
-  });
-  modeSection.appendChild(modeRow);
-  wrap.appendChild(modeSection);
-
-  const stormWrap = document.createElement('div');
-  stormWrap.id = 'stormWrap';
-  stormWrap.style.cssText = 'display:none;flex-direction:column;align-items:center;gap:12px;width:100%;';
-  const stormLabel = document.createElement('div');
-  stormLabel.style.cssText = 'font-size:clamp(12px,3vw,15px);letter-spacing:.14em;color:rgba(240,230,208,.35);';
-  stormLabel.textContent = t ? 'noting style' : 'estilo de notar';
-  stormWrap.appendChild(stormLabel);
-  const srow = document.createElement('div');
-  srow.className = 'storm-row';
-  [
-    {id:'calm', label:t?'normal':'normal'},
-    {id:'storm', label:t?'storm':'tormenta'}
-  ].forEach(m => {
-    const b = document.createElement('button');
-    b.id = 'obs-storm-' + m.id;
-    b.className = 'storm-chip';
-    b.textContent = m.label;
-    b.addEventListener('click', () => setStormMode(m.id === 'storm'));
-    srow.appendChild(b);
-  });
-  stormWrap.appendChild(srow);
-  wrap.appendChild(stormWrap);
-
-  const timeSection = document.createElement('div');
-  timeSection.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:14px;width:100%;';
-  const timeLabel = document.createElement('div');
-  timeLabel.style.cssText = 'font-size:clamp(12px,3vw,15px);letter-spacing:.14em;color:rgba(240,230,208,.35);';
-  timeLabel.textContent = t ? 'duration' : 'duración';
-  timeSection.appendChild(timeLabel);
-  const timeRow = document.createElement('div');
-  timeRow.className = 'sense-row';
-  [1,5,10].forEach(m => {
-    const b = document.createElement('button');
-    b.id = 'obs-time-' + m;
-    b.className = 'mode-chip';
-    b.textContent = m + 'm';
-    b.addEventListener('click', () => setObsTime(m));
-    timeRow.appendChild(b);
-  });
-  timeSection.appendChild(timeRow);
-  wrap.appendChild(timeSection);
-  const enterBtn = document.createElement('button');
-  enterBtn.className = 'settings-btn';
-  enterBtn.style.minWidth = '180px';
-  enterBtn.textContent = t ? 'enter' : 'entrar';
-  enterBtn.addEventListener('click', enterObserve);
-  wrap.appendChild(enterBtn);
-  screen.appendChild(wrap);
-  requestAnimationFrame(() => requestAnimationFrame(() => { wrap.style.opacity = '1'; }));
+  _origBuildObsSetupScreen();
+  const modeSection = document.querySelector('#obs-setup > div:nth-child(2)');
+  if (modeSection && !document.getElementById('obs-mode-noting')) {
+    const row = modeSection.querySelector('div:last-child');
+    if (row) {
+      const b = document.createElement('button');
+      b.id = 'obs-mode-noting';
+      b.type = 'button';
+      b.style.cssText = 'flex:1;padding:20px 8px;background:none;border:1px solid rgba(201,169,110,.18);border-radius:12px;color:rgba(240,230,208,.4);font-family:inherit;font-size:clamp(15px,3.8vw,18px);letter-spacing:.08em;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:all .3s ease;min-height:64px;';
+      b.textContent = lang === 'en' ? 'noting' : 'notar';
+      b.addEventListener('click', () => setObsMode('noting'));
+      row.appendChild(b);
+    }
+  }
+  let stormWrap = document.getElementById('stormWrap');
+  if (!stormWrap) {
+    stormWrap = document.createElement('div');
+    stormWrap.id = 'stormWrap';
+    stormWrap.style.cssText = 'display:none;flex-direction:column;align-items:center;gap:12px;width:100%;';
+    const lab = document.createElement('div');
+    lab.style.cssText = 'font-size:clamp(12px,3vw,15px);letter-spacing:.14em;color:rgba(240,230,208,.35);';
+    lab.textContent = lang === 'en' ? 'style' : 'estilo';
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:12px;width:100%;max-width:320px;';
+    const mk = (id, txt, on) => {
+      const b = document.createElement('button');
+      b.id = id;
+      b.type = 'button';
+      b.style.cssText = 'flex:1;padding:16px 8px;background:none;border:1px solid rgba(201,169,110,.18);border-radius:12px;color:rgba(240,230,208,.4);font-family:inherit;font-size:clamp(14px,3.4vw,17px);letter-spacing:.08em;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:all .3s ease;min-height:54px;';
+      b.textContent = txt;
+      b.addEventListener('click', () => setStormMode(on));
+      row.appendChild(b);
+    };
+    mk('obs-storm-calm', lang === 'en' ? 'normal' : 'normal', false);
+    mk('obs-storm-storm', lang === 'en' ? 'storm' : 'tormenta', true);
+    stormWrap.appendChild(lab); stormWrap.appendChild(row);
+    const setup = document.getElementById('obs-setup');
+    setup.insertBefore(stormWrap, setup.children[2]);
+  }
   setObsMode(obsMode);
   setObsTime(obsMinutes);
   setStormMode(obsStorm);
 };
 
-const _setObsModeV2 = setObsMode;
+const _origSetObsMode = setObsMode;
 setObsMode = function(mode) {
   obsMode = mode;
-  ['drift','kasina','noting'].forEach(id => {
-    const el = document.getElementById('obs-mode-' + id);
-    if (el) el.classList.toggle('active', id === mode);
+  _origSetObsMode(mode === 'noting' ? 'drift' : mode);
+  const ids = ['drift','kasina','noting'];
+  ids.forEach(id => {
+    const el = document.getElementById('obs-mode-'+id);
+    if (el) {
+      el.style.borderColor = id===mode ? 'rgba(201,169,110,.7)' : 'rgba(201,169,110,.18)';
+      el.style.color = id===mode ? 'rgba(240,204,136,.9)' : 'rgba(240,230,208,.45)';
+    }
   });
   const stormWrap = document.getElementById('stormWrap');
   if (stormWrap) stormWrap.style.display = mode === 'noting' ? 'flex' : 'none';
-  if (mode === 'kasina' || mode === 'drift') _setObsModeV2(mode === 'drift' ? 'drift' : 'kasina');
 };
 function setStormMode(on) {
   obsStorm = !!on;
   const calm = document.getElementById('obs-storm-calm');
   const storm = document.getElementById('obs-storm-storm');
-  if (calm) calm.classList.toggle('active', !obsStorm);
-  if (storm) storm.classList.toggle('active', obsStorm);
+  if (calm) {
+    calm.style.borderColor = !obsStorm ? 'rgba(201,169,110,.7)' : 'rgba(201,169,110,.18)';
+    calm.style.color = !obsStorm ? 'rgba(240,204,136,.9)' : 'rgba(240,230,208,.45)';
+  }
+  if (storm) {
+    storm.style.borderColor = obsStorm ? 'rgba(201,169,110,.7)' : 'rgba(201,169,110,.18)';
+    storm.style.color = obsStorm ? 'rgba(240,204,136,.9)' : 'rgba(240,230,208,.45)';
+  }
 }
 
-const _enterObserveV2 = enterObserve;
+const _origEnterObserve = enterObserve;
 enterObserve = function() {
-  if (obsMode !== 'noting') return _enterObserveV2();
+  if (obsMode !== 'noting') return _origEnterObserve();
   initAudio();
   if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(()=>{});
   fadeDrone(true, 1); spParticles = [];
   const setup = document.getElementById('obs-setup');
   if (setup) { setup.style.transition = 'opacity 0.8s ease'; setup.style.opacity = '0'; }
   setTimeout(() => {
-    noteCount = 0; notePhase = 'sense'; noteSense = ''; clarityLevel = 0; fieldActive = true; isCoherent = false;
+    noteCount = 0; noteSense = ''; clarityLevel = 0; fieldActive = true; isCoherent = false;
     observeParticle = new ObsParticle(); observeParticle.targetAlpha = 0.9; kasinaParticle = null; particleVisible = true;
     buildObsScreen();
     obsTimerEnd = Date.now() + obsMinutes * 60 * 1000;
@@ -1978,22 +1873,19 @@ enterObserve = function() {
   }, 700);
 };
 
-const _buildObsScreenV2 = buildObsScreen;
+const _origBuildObsScreen = buildObsScreen;
 buildObsScreen = function() {
-  if (obsMode !== 'noting') return _buildObsScreenV2();
+  if (obsMode !== 'noting') return _origBuildObsScreen();
   const t = lang === 'en';
   const screen = document.getElementById('s-observe');
-  const hint1 = t ? 'Recognise what is happening now.' : 'Reconoce lo que sucede ahora.';
-  const hint2 = obsStorm ? (t ? 'Watch the storm.' : 'Mira la tormenta.') : (t ? 'Sense then tone.' : 'Sentido y luego tono.');
   screen.innerHTML = `
     <div class="observe-alt-wrap">
       <div class="observe-alt-title">${t?'noting':'notar'}</div>
-      <div class="observe-alt-hint">${hint1}<br>${hint2}</div>
       <div id="stormWord" class="storm-word"></div>
       <div id="noteCounter" class="note-counter">${t?'notes':'notas'} · 0</div>
       <div id="senseRow" class="sense-row"></div>
+      <div class="observe-alt-hint" style="font-size:var(--fl);">${t?'sense then tone':'sentido y luego tono'}</div>
       <div id="toneRow" class="tone-row" style="opacity:.35"></div>
-      <div class="observe-alt-hint" style="font-size:var(--fl);">${t?'choose a sense, then a tone':'elige un sentido y luego un tono'}</div>
     </div>`;
   const senseRow = document.getElementById('senseRow');
   NOTE_SENSES[lang].forEach(s => {
@@ -2013,13 +1905,11 @@ buildObsScreen = function() {
   });
 };
 function chooseNoteSense(key, el) {
-  noteSense = key; notePhase = 'tone';
+  noteSense = key;
   document.querySelectorAll('#senseRow .sense-chip').forEach(x => x.classList.remove('active'));
   if (el) el.classList.add('active');
   const toneRow = document.getElementById('toneRow');
   if (toneRow) toneRow.style.opacity = '1';
-  clarityLevel = Math.min(0.85, clarityLevel + 0.04);
-  updateClarityRing();
 }
 function chooseNoteTone(key, el) {
   if (!noteSense) return;
@@ -2028,11 +1918,7 @@ function chooseNoteTone(key, el) {
   if (el) el.classList.add('active');
   const counter = document.getElementById('noteCounter');
   if (counter) counter.textContent = (lang==='en'?'notes':'notas') + ' · ' + noteCount;
-  clarityLevel = Math.min(1, clarityLevel + 0.08);
-  if (observeParticle) {
-    observeParticle.scatter();
-    observeParticle.targetAlpha = 0.9;
-  }
+  if (observeParticle) observeParticle.scatter();
   playAffirmSound();
   pulseStormWord(noteSense + ' · ' + key);
   setTimeout(() => {
@@ -2040,7 +1926,7 @@ function chooseNoteTone(key, el) {
     document.querySelectorAll('#toneRow .tone-chip').forEach(x => x.classList.remove('active'));
     const toneRow = document.getElementById('toneRow');
     if (toneRow) toneRow.style.opacity = '.35';
-    noteSense = ''; notePhase = 'sense';
+    noteSense = '';
   }, 420);
 }
 function startNotingStorm() {
@@ -2051,7 +1937,6 @@ function startNotingStorm() {
     const words = STORM_WORDS[lang];
     const word = words[Math.floor(Math.random() * words.length)];
     pulseStormWord(word);
-    for (let i = 0; i < 7; i++) spawnMicroParticle();
   }, 2600);
 }
 function clearStormTimer() {
@@ -2065,17 +1950,8 @@ function pulseStormWord(word) {
   el.style.opacity = '1';
   setTimeout(() => { if (el) el.style.opacity = '0'; }, 900);
 }
-function spawnMicroParticle() {
-  if (!observeParticle) return;
-  const x = innerWidth * (0.2 + Math.random()*0.6);
-  const y = innerHeight * (0.22 + Math.random()*0.45);
-  if (!observeParticle.scatterParts) observeParticle.scatterParts = [];
-  observeParticle.scatterParts.push({x,y,vx:(Math.random()-0.5)*1.8,vy:(Math.random()-0.5)*1.8,alpha:0.35+Math.random()*0.35,r:0.8+Math.random()*1.2});
-  observeParticle.scattering = true;
-  setTimeout(() => { if (observeParticle) observeParticle.scattering = false; }, 260);
-}
 
-const _startObsTimerV2 = startObsTimer;
+const _origStartObsTimer = startObsTimer;
 startObsTimer = function() {
   clearInterval(obsTimerInterval);
   obsTimerInterval = setInterval(() => {
@@ -2102,34 +1978,13 @@ startObsTimer = function() {
   }, 1000);
 };
 
-const _reachObsCoherenceV2 = reachObsCoherence;
+const _origReachObsCoherence = reachObsCoherence;
 reachObsCoherence = function() {
   clearStormTimer();
-  _reachObsCoherenceV2();
-  if (obsMode === 'noting') {
-    const line = document.getElementById('obsCohLine');
-    const word = document.getElementById('obsCohWord');
-    if (word) word.textContent = lang === 'en' ? 'C L A R I T Y' : 'C L A R I D A D';
-    if (line) line.innerHTML = (lang === 'en' ? 'Recognition became space.<br>The field responded.' : 'El reconocimiento se volvió espacio.<br>El campo respondió.');
-  }
+  _origReachObsCoherence();
 };
 
-const _clearObserverV2 = clearObserver;
-clearObserver = function() {
-  clearStormTimer();
-  _clearObserverV2();
-};
-
-// living-field tweak: subtle gathering when clarity rises
-const _updateClarityRingV2 = updateClarityRing;
-updateClarityRing = function() {
-  _updateClarityRingV2();
-  if (currentMode === 'observe' && clarityLevel > 0.3) {
-    bgDimTarget = 0.75 + Math.min(0.18, clarityLevel * 0.1);
-  }
-};
-
-const _buildShadowGridV2 = buildShadowGrid;
+const _origBuildShadowGrid = buildShadowGrid;
 buildShadowGrid = function() {
   const grid = document.getElementById('shadowGrid'); grid.innerHTML = '';
   const en = SHADOW_STATES.en, es = SHADOW_STATES.es;
@@ -2138,9 +1993,7 @@ buildShadowGrid = function() {
     o.style.setProperty('--shadow-dur', (3.5+Math.random()*3).toFixed(2)+'s');
     o.style.animationDelay = (-Math.random()*4).toFixed(2)+'s';
     o.textContent = lang==='en' ? name : es[i];
-    const go = () => { decStateName=name; decStateNameES=es[i]; showDecBodyMap(); };
-    o.addEventListener('click', go);
-    o.addEventListener('touchend', e => { e.preventDefault(); go(); });
+    o.addEventListener('click', () => { decStateName=name; decStateNameES=es[i]; showDecBodyMap(); });
     grid.appendChild(o);
   });
 };
@@ -2149,17 +2002,18 @@ function showDecBodyMap() {
   const line = document.getElementById('decArrivalLine');
   const sub = document.getElementById('decArrivalSub');
   if (line) line.textContent = lang === 'en' ? 'Where do you feel it most?' : '¿Dónde lo sientes más?';
-  if (sub) sub.textContent = lang === 'en' ? 'Tap the place. The field will meet it there.' : 'Toca el lugar. El campo lo encontrará allí.';
+  if (sub) sub.textContent = '';
   if (!grid) return;
-  grid.innerHTML = '<div class="bodymap-wrap"><div id="decBodyPrompt"></div><div class="bodymap-line" id="bodyMapLine"></div></div>';
-  const prompt = document.getElementById('decBodyPrompt');
-  if (prompt) prompt.textContent = lang === 'en' ? 'A simple body map before release.' : 'Un mapa corporal simple antes de soltar.';
+  grid.innerHTML = '<div class="bodymap-wrap"><div class="bodymap-line" id="bodyMapLine"></div></div>';
   const lineEl = document.getElementById('bodyMapLine');
-  BODY_SPOTS[lang].forEach(spot => {
+  BODY_SPOTS[lang].forEach((spot, idx) => {
     const b = document.createElement('button');
     b.className = 'body-node';
     b.textContent = spot.label;
     b.style.top = spot.top + '%';
+    b.style.opacity = '0';
+    b.style.transition = 'opacity 0.9s ease, transform 0.9s ease';
+    b.style.transform = 'translateX(-50%) translateY(8px)';
     b.addEventListener('click', () => {
       decBodySpot = spot.key;
       document.querySelectorAll('.body-node').forEach(x => x.classList.remove('active'));
@@ -2167,22 +2021,44 @@ function showDecBodyMap() {
       setTimeout(() => startDecAcknowledge(), 160);
     });
     lineEl.appendChild(b);
+    setTimeout(() => { b.style.opacity = '1'; b.style.transform = 'translateX(-50%) translateY(0)'; }, 120 * idx);
   });
 }
-const _startDecBreathV2 = startDecBreath;
+
+const _origStartDecBreath = startDecBreath;
 startDecBreath = function(displayName) {
   const wrap = document.getElementById('dec-word-wrap');
   const bw = document.getElementById('dec-bp-wrap');
+  const btext = document.getElementById('dec-btext');
+  const bdots = document.getElementById('dec-bdots');
   const pos = DEC_BODY_POS[decBodySpot] || DEC_BODY_POS.chest;
   if (wrap) wrap.style.top = pos.wordTop;
-  if (bw) bw.style.position = 'fixed', bw.style.left = '50%', bw.style.top = pos.particleTop, bw.style.transform = 'translate(-50%,-50%)';
-  _startDecBreathV2(displayName);
-  const btext = document.getElementById('dec-btext');
-  const origText = btext ? btext.textContent : '';
-  setTimeout(() => {
-    const el = document.getElementById('dec-btext');
-    if (el) el.textContent = lang === 'en' ? 'exhale slowly · let it leave the body' : 'exhala despacio · deja que salga del cuerpo';
-  }, 7150);
+  if (bw) bw.style.top = pos.particleTop;
+  if (bdots) bdots.style.top = pos.dotsTop;
+  if (btext) btext.style.top = pos.textTop;
+  _origStartDecBreath(displayName);
 };
 
+// ── INIT ──
 applyLang();
+
+// First launch: show welcome. Return visits: show home directly.
+if (!localStorage.getItem('field_welcomed')) {
+  buildWelcome();
+  // Start with welcome screen active, home inactive
+  document.getElementById('s-home').classList.remove('active');
+  document.getElementById('s-welcome').classList.add('active');
+  initSpParticles(12);
+  tryDrone();
+} else {
+  initSpParticles(12);
+  tryDrone();
+}
+
+
+window.addEventListener('keydown', e => {
+  if (e.key===' '||e.key==='Enter') {
+    const active = document.querySelector('.screen.active');
+    if (active && active.id==='s-init') advanceStep();
+  }
+});
