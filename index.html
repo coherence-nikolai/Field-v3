@@ -486,6 +486,32 @@ body.fs-large .imag-prompt{font-size:clamp(18px,4.8vw,24px);}
 #revisitHomeBtn{background:none;border:none;font-family:'Plus Jakarta Sans',sans-serif;font-size:var(--fl);letter-spacing:.12em;color:rgba(201,169,110,.28);cursor:pointer;padding:10px 20px;min-height:40px;-webkit-tap-highlight-color:transparent;transition:color .4s ease;font-weight:300;position:absolute;bottom:64px;left:50%;transform:translateX(-50%);}
 #revisitHomeBtn:hover{color:var(--gold);}
 
+
+/* patch: decohere refinements */
+#dec-btext{margin-top:60px !important;}
+.dec-word{
+  color:#B8574A !important;
+  text-shadow:0 0 28px rgba(184,87,74,.28), 0 0 54px rgba(184,87,74,.16) !important;
+}
+.dec-word.dissolving{
+  color:rgba(184,87,74,.20) !important;
+  filter:blur(6px);
+}
+.shadow-orb{
+  color:rgba(184,110,100,.68) !important;
+  text-shadow:0 0 14px rgba(184,110,100,.18) !important;
+}
+.shadow-orb:active,.shadow-orb:hover{
+  color:rgba(220,150,135,.92) !important;
+  text-shadow:0 0 24px rgba(184,110,100,.36) !important;
+}
+.cword{
+  text-shadow:
+    0 0 90px rgba(255,232,176,.95),
+    0 0 160px rgba(255,210,80,.70),
+    0 0 260px rgba(255,180,60,.45) !important;
+}
+
 </style>
 </head>
 <body>

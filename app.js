@@ -249,6 +249,8 @@ function loop() {
     cx.clearRect(0, 0, cv.width, cv.height);
     bgDimLevel += (bgDimTarget - bgDimLevel) * 0.03;
     bgPts.forEach(p => { p.update(); p.draw(); });
+    updateCollapseMerge();
+    drawCollapseMerge();
     if (currentMode === 'observe' && particleVisible) {
       if (obsMode === 'kasina' && kasinaParticle) {
         kasinaParticle.update(); kasinaParticle.draw();
@@ -362,15 +364,26 @@ function playAffirmSound() {
 }
 function playDecohereRelease() {
   if (!audioCtx) return;
-  [396, 180, 90].forEach((f, i) => {
-    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
-    o.type = 'sine'; o.frequency.value = f;
-    const t0 = audioCtx.currentTime + i*0.15;
-    g.gain.setValueAtTime(0, t0);
-    g.gain.linearRampToValueAtTime(0.05 - i*0.012, t0+0.5);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0+6);
-    o.connect(g); g.connect(audioCtx.destination); o.start(t0); o.stop(t0+7);
-  });
+  // descending tone
+  const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(420, audioCtx.currentTime);
+  o.frequency.exponentialRampToValueAtTime(110, audioCtx.currentTime + 4);
+  g.gain.setValueAtTime(0.05, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 4);
+  o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime + 4);
+
+  // shimmer release
+  const buf = audioCtx.createBuffer(1, audioCtx.sampleRate*0.25, audioCtx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random()*2-1) * (1 - i/d.length);
+  const src = audioCtx.createBufferSource(), gg = audioCtx.createGain();
+  src.buffer = buf;
+  gg.gain.setValueAtTime(0.0, audioCtx.currentTime);
+  gg.gain.linearRampToValueAtTime(0.03, audioCtx.currentTime + 3.15);
+  gg.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 4.0);
+  src.connect(gg); gg.connect(audioCtx.destination);
+  src.start(audioCtx.currentTime + 3.15);
 }
 function playScatterSound() {
   if (!audioCtx) return;
@@ -1129,6 +1142,7 @@ function buildCollapseField() {
     o.addEventListener('touchend', e => { e.preventDefault(); go(); });
     grid.appendChild(o);
   });
+  grid.querySelectorAll('.shadow-orb').forEach(el=>{el.classList.remove('active','selected');});
   document.querySelectorAll('.orb').forEach(el => { el.classList.remove('collapsing','fading'); el.style.filter=''; el.style.opacity=''; });
   document.querySelectorAll('.al').forEach(a => a.classList.add('on'));
   particlesHidden = false; initScene('field');
@@ -1206,6 +1220,7 @@ function showCollapseStage(n) {
     const chosen = spParticles[spChosen%Math.max(spParticles.length,1)];
     if (chosen) { chosen.cx=0.5; chosen.cy=0.5; chosen.targetCx=0.5; chosen.targetCy=0.14; chosen.x=0.5*innerWidth; chosen.y=0.5*innerHeight; chosen.targetAlpha=1; chosen.targetClarity=1; chosen._flickering=false; }
     particlesHidden = false; initScene('state_chosen', spChosen);
+    if(collapseMergeParticle) collapseMergeParticle.phase='rise';
     bp.style.transition = 'opacity 1.2s ease'; bp.style.opacity = '0';
     setTimeout(() => { bp.className='bp neutral'; bp.style.opacity=''; bp.style.transition=''; }, 1300);
   } else { particlesHidden = false; initScene('state_chosen', spChosen); }
@@ -1250,6 +1265,7 @@ function startBreath() {
   const stateName=curStateName, t=TRANSLATIONS[lang];
   spParticles.forEach(sp => { sp.targetAlpha = 0; });
   const p=document.getElementById('bp'), ripple=document.getElementById('bripple');
+  startCollapseMerge(innerWidth*0.5, innerHeight*0.62, -1.8);
   const btext=document.getElementById('btext');
   p.className='bp neutral';
   btext.style.transition='none'; btext.style.opacity='0';
@@ -1285,7 +1301,8 @@ function startBreath() {
     showText(t.breathHold,'',4500);
     bDelay(()=>{ p.className='bp holding'; },4500);
     showText(stateName,'gold',7300);
-    bDelay(()=>{ p.className='bp exhaling'; ripple.classList.remove('expand'); void ripple.offsetWidth; ripple.classList.add('expand'); playExhaleCollapse(); const cw=document.getElementById('cword'); if(cw) cw.classList.add('exhaling'); },7300);
+    bDelay(()=>{ p.className='bp exhaling'; ripple.classList.remove('expand'); void ripple.offsetWidth; ripple.classList.add('expand'); if(collapseMergeParticle) collapseMergeParticle.phase='rise';
+      playExhaleCollapse(); const cw=document.getElementById('cword'); if(cw) cw.classList.add('exhaling'); },7300);
     bDelay(()=>{ const cw=document.getElementById('cword'); if(cw) cw.classList.remove('exhaling'); },11800);
     hideText(11800);
     bDelay(()=>{ const dot=document.getElementById('bdot'+(breathCycle-1)); if(dot) dot.classList.add('done'); p.className='bp neutral'; },11800);
@@ -1338,6 +1355,7 @@ function buildShadowGrid() {
     o.addEventListener('touchend', e => { e.preventDefault(); go(); });
     grid.appendChild(o);
   });
+  grid.querySelectorAll('.shadow-orb').forEach(el=>{el.classList.remove('active','selected');});
 }
 
 // PHASE 1: Acknowledgment — word sits alone, seen
@@ -1366,7 +1384,7 @@ function startDecAcknowledge() {
     span.style.cssText = 'display:inline-block;transition:none;';
     wordEl.appendChild(span);
   });
-  ackLine.textContent = lang==='en' ? 'seen.' : 'visto.';
+  ackLine.textContent = '';
 
   // Reset breath layer elements
   [0,1,2].forEach(i => {
@@ -1378,16 +1396,19 @@ function startDecAcknowledge() {
   showScreen('s-dec-breath', () => {
     // Re-enable transitions after screen is visible
     requestAnimationFrame(() => requestAnimationFrame(() => {
-      wordEl.style.transition = 'color 3s ease, opacity 2s ease';
+      wordEl.style.transition = 'color 3s ease, opacity 2s ease, transform 0.6s ease, text-shadow 2s ease';
+      wordEl.classList.add('decohere-word');
+      wordEl.style.transform = 'scale(0.94)';
+      wordEl.style.color = '#B8574A';
       ackLayer.style.transition = 'opacity 1s ease';
       ackLine.style.transition = 'opacity 1.4s ease';
 
       // Fade word in
-      setTimeout(() => { wordEl.style.opacity = '1'; wordEl.style.transform = 'translateY(0)'; wordEl.style.textShadow = '0 0 36px rgba(240,220,180,.28)'; }, 100);
+      setTimeout(() => { wordEl.style.opacity = '1'; wordEl.style.transform = 'translateY(0) scale(1.05)'; wordEl.style.color = '#B8574A'; wordEl.style.textShadow = '0 0 40px rgba(184,87,74,.34),0 0 70px rgba(184,87,74,.16)'; }, 100);
       // Fade ack layer in (contains "yes. this is real.")
       setTimeout(() => { ackLayer.style.opacity = '1'; }, 200);
       // Fade ack line in after word settles
-      setTimeout(() => { ackLine.style.opacity = '1'; }, 1400);
+      setTimeout(() => { ackLine.style.opacity = '0'; }, 1400);
 
       // After 5s — cross-fade: ack layer out, breath layer in (word stays put)
       setTimeout(() => startDecBreath(displayName), 5000);
@@ -1436,6 +1457,7 @@ function startDecBreath(displayName) {
 
   function setBtext(txt) {
     if (!btext) return;
+    btext.style.marginTop = '60px';
     const isVisible = parseFloat(btext.style.opacity||'0') > 0.05;
     if (isVisible) {
       btext.style.transition = 'opacity 0.5s ease';
@@ -1454,6 +1476,7 @@ function startDecBreath(displayName) {
   }
   function hideBtext() {
     if (!btext) return;
+    btext.style.marginTop = '60px';
     btext.style.transition = 'opacity 0.8s ease';
     btext.style.opacity = '0';
   }
@@ -1996,6 +2019,7 @@ buildShadowGrid = function() {
     o.addEventListener('click', () => { decStateName=name; decStateNameES=es[i]; showDecBodyMap(); });
     grid.appendChild(o);
   });
+  grid.querySelectorAll('.shadow-orb').forEach(el=>{el.classList.remove('active','selected');});
 };
 function showDecBodyMap() {
   const grid = document.getElementById('shadowGrid');
@@ -2062,3 +2086,39 @@ window.addEventListener('keydown', e => {
     if (active && active.id==='s-init') advanceStep();
   }
 });
+
+document.addEventListener('click',e=>{const t=e.target;if(!t) return;if(t.closest('.movement')||t.closest('.glyph')||t.tagName==='BUTTON'){if(typeof initAudio==='function') initAudio();}});
+
+let collapseMergeParticle = null;
+function startCollapseMerge(x,y,vy){
+  collapseMergeParticle = {x:x,y:y,vy:vy||0,alpha:1,phase:'merge'};
+}
+function updateCollapseMerge(){
+  if(!collapseMergeParticle) return;
+  if(collapseMergeParticle.phase==='merge'){
+    collapseMergeParticle.y += collapseMergeParticle.vy;
+    collapseMergeParticle.alpha *= 0.995;
+  } else {
+    collapseMergeParticle.y -= 4;
+    collapseMergeParticle.alpha *= 0.96;
+  }
+  if(collapseMergeParticle.alpha < 0.02) collapseMergeParticle = null;
+}
+function drawCollapseMerge(){
+  if(!collapseMergeParticle || !cx) return;
+  cx.save();
+  cx.globalAlpha = collapseMergeParticle.alpha;
+  const glow = 24;
+  const grad = cx.createRadialGradient(collapseMergeParticle.x,collapseMergeParticle.y,0,collapseMergeParticle.x,collapseMergeParticle.y,glow);
+  grad.addColorStop(0,'rgba(240,204,136,0.55)');
+  grad.addColorStop(1,'rgba(240,204,136,0)');
+  cx.fillStyle = grad;
+  cx.beginPath();
+  cx.arc(collapseMergeParticle.x,collapseMergeParticle.y,glow,0,Math.PI*2);
+  cx.fill();
+  cx.fillStyle='rgba(240,210,140,0.95)';
+  cx.beginPath();
+  cx.arc(collapseMergeParticle.x,collapseMergeParticle.y,3.2,0,Math.PI*2);
+  cx.fill();
+  cx.restore();
+}
