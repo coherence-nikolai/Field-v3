@@ -17,7 +17,7 @@ const TRANSLATIONS = {
     wlcTapHint: 'tap to continue',
     // Field arrival
     fieldArrival: 'The field is open.',
-    fieldSub: 'attention shapes the field',
+    fieldSub: 'Choose your practice.',
     observeLabel: 'Observe',
     collapseLabel: 'Collapse',
     decohere_label: 'Decohere',
@@ -78,7 +78,7 @@ const TRANSLATIONS = {
     wlcTapHint: 'toca para continuar',
     // Field arrival
     fieldArrival: 'El campo está abierto.',
-    fieldSub: 'la atención moldea el campo',
+    fieldSub: 'Elige tu práctica.',
     observeLabel: 'Observar',
     collapseLabel: 'Colapsar',
     decohere_label: 'Disipar',
