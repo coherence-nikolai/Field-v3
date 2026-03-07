@@ -329,7 +329,7 @@ html,body { margin:0;padding:0;width:100%;height:100%;background:var(--bg);
 .bripple.expand-soft{animation:ripOutSoft 3s cubic-bezier(.25,.46,.45,.94) forwards;}
 @keyframes ripOut{0%{opacity:.6;transform:translate(-50%,-50%) scale(1)}100%{opacity:0;transform:translate(-50%,-50%) scale(18)}}
 @keyframes ripOutSoft{0%{opacity:.3;transform:translate(-50%,-50%) scale(1)}100%{opacity:0;transform:translate(-50%,-50%) scale(8)}}
-.bdots{display:flex;gap:14px;margin-top:56px;}
+.bdots{display:flex;gap:14px;position:fixed;bottom:clamp(60px,14vw,90px);left:50%;transform:translateX(-50%);z-index:20;}
 .bdot{width:7px;height:7px;border-radius:50%;background:rgba(201,169,110,.15);
   transition:background .6s ease,box-shadow .6s ease;}
 .bdot.done{background:var(--gold);box-shadow:0 0 8px rgba(201,169,110,.5);}
@@ -396,7 +396,7 @@ html,body { margin:0;padding:0;width:100%;height:100%;background:var(--bg);
   transition:opacity 0.7s ease;opacity:0;overflow:hidden;line-height:1.4;
   z-index:16;pointer-events:none;}
 #dec-bp-wrap{position:relative;
-  width:min(62vw,300px);height:min(62vw,300px);display:flex;align-items:center;justify-content:center;z-index:14;}
+  width:min(32vw,160px);height:min(32vw,160px);display:flex;align-items:center;justify-content:center;z-index:14;}
 #dec-bp{position:absolute;inset:0;border-radius:50%;
   background:rgba(180,175,165,.5);
   box-shadow:0 0 12px rgba(160,155,145,.25);
@@ -644,6 +644,7 @@ body.fs-large .imag-prompt{font-size:clamp(18px,4.8vw,24px);}
 
 <div id="chrome">
   <button class="chrome-btn" id="backBtn" onclick="goHome()" style="opacity:0;pointer-events:none;">←</button>
+  <button class="chrome-btn" id="langToggleBtn" onclick="toggleLang()" style="font-size:clamp(10px,2.5vw,13px);letter-spacing:.18em;opacity:0.38;padding:8px 4px;"></button>
   <button class="chrome-btn" id="settingsBtn" onclick="toggleSettings()">⚙</button>
 </div>
 

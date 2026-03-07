@@ -107,6 +107,15 @@ class Pt {
 const bgPts = Array.from({length:70}, () => new Pt());
 let bgDimTarget = 1; let bgDimLevel = 1;
 
+// ── DEVICE TILT PARALLAX ──
+let tiltX = 0, tiltY = 0; // -1 to 1 smoothed
+let rawTiltX = 0, rawTiltY = 0;
+window.addEventListener('deviceorientation', e => {
+  // gamma = left/right (-90 to 90), beta = front/back (-180 to 180)
+  rawTiltX = Math.max(-1, Math.min(1, (e.gamma || 0) / 30));
+  rawTiltY = Math.max(-1, Math.min(1, ((e.beta || 0) - 45) / 40));
+}, { passive: true });
+
 // ── SUPERPOSITION PARTICLES ──
 class SpParticle {
   constructor(i, total) {
@@ -129,8 +138,12 @@ class SpParticle {
     this.cx += (this.targetCx - this.cx) * 0.018;
     this.cy += (this.targetCy - this.cy) * 0.018;
     const ds = Math.min(innerWidth, innerHeight);
-    this.x = this.cx*innerWidth + Math.cos(this.ph)*this.driftR*(ds/500);
-    this.y = this.cy*innerHeight + Math.sin(this.ph*0.73)*this.driftR*0.65*(ds/500);
+    // Tilt parallax — depth by index (outer particles move more)
+    const tiltDepth = currentMode === 'home' ? (0.5 + (this.idx % 4) * 0.3) : 0;
+    const tiltOffX = tiltX * 18 * tiltDepth;
+    const tiltOffY = tiltY * 12 * tiltDepth;
+    this.x = this.cx*innerWidth  + Math.cos(this.ph)*this.driftR*(ds/500) + tiltOffX;
+    this.y = this.cy*innerHeight + Math.sin(this.ph*0.73)*this.driftR*0.65*(ds/500) + tiltOffY;
     this.alpha += (this.targetAlpha - this.alpha) * 0.025;
     this.clarity += (this.targetClarity - this.clarity) * 0.03;
     if (this._flickering) {
@@ -567,6 +580,9 @@ function loop() {
   try {
     cx.clearRect(0, 0, cv.width, cv.height);
     bgDimLevel += (bgDimTarget - bgDimLevel) * 0.03;
+    // Smooth tilt
+    tiltX += (rawTiltX - tiltX) * 0.06;
+    tiltY += (rawTiltY - tiltY) * 0.06;
     bgPts.forEach(p => { p.update(); p.draw(); });
     if (currentMode === 'observe' && particleVisible) {
       if (obsMode === 'kasina' && kasinaParticle) {
@@ -580,7 +596,28 @@ function loop() {
     if ((currentMode === 'collapse' || currentMode === 'home' || currentMode === 'decohere') && spParticles.length) {
       spParticles.forEach(p => { p.update(); p.draw(); });
     }
-    if (breathOrb && currentMode === 'collapse') { breathOrb.update(); breathOrb.draw(); }
+    if (breathOrb && currentMode === 'collapse') {
+      breathOrb.update(); breathOrb.draw();
+      // ── Breath arc ring — visual inhale/exhale, replaces text labels ──
+      const isInhale = breathOrb.phase === 'inhale' || breathOrb.phase === 'hold';
+      const isExhale = breathOrb.phase === 'exhale';
+      if (isInhale || isExhale) {
+        const orbR = breathOrb.dispRadius;
+        const ringR = orbR * 2.8 + 18;
+        const progT = Math.min(breathOrb.elapsed / (isInhale ? breathOrb.INHALE : breathOrb.EXHALE), 1);
+        const arc = isInhale ? progT * Math.PI * 2 : (1 - progT) * Math.PI * 2;
+        const ringAlpha = 0.18 + 0.12 * Math.sin(breathOrb.flickPh * 0.4);
+        cx.save();
+        cx.globalAlpha = ringAlpha;
+        cx.strokeStyle = `rgba(240,210,140,1)`;
+        cx.lineWidth = 1;
+        cx.lineCap = 'round';
+        cx.beginPath();
+        cx.arc(breathOrb.x, breathOrb.y, ringR, -Math.PI/2, -Math.PI/2 + arc, false);
+        cx.stroke();
+        cx.restore();
+      }
+    }
   } catch(e) { console.warn('loop err:', e); }
   requestAnimationFrame(loop);
 }
@@ -988,13 +1025,35 @@ function applyLang() {
   document.getElementById('obsCohLine').innerHTML = t.obsCoherenceLine.replace(/\n/g,'<br>');
   document.getElementById('obsCohTap').textContent = t.obsCoherenceTap;
   document.getElementById('revisitBtn').textContent = 'revisit introduction';
+  const ltb = document.getElementById('langToggleBtn');
+  if (ltb) ltb.textContent = lang === 'en' ? 'ES' : 'EN';
   updateHomeCount();
 }
 function updateHomeCount() {
   const n = parseInt(localStorage.getItem('field_obs')||'0');
   const t = TRANSLATIONS[lang];
   const el = document.getElementById('homeCount');
-  if (el) el.textContent = n > 0 ? t.obsCount(n) : '';
+  if (!el) return;
+
+  // Streak tracking — store last visit date
+  const today = new Date().toDateString();
+  const lastVisit = localStorage.getItem('field_last_visit');
+  const streakRaw = parseInt(localStorage.getItem('field_streak')||'0');
+  let streak = streakRaw;
+  if (lastVisit !== today) {
+    const yesterday = new Date(Date.now() - 86400000).toDateString();
+    streak = (lastVisit === yesterday) ? streakRaw + 1 : 1;
+    localStorage.setItem('field_streak', streak);
+    localStorage.setItem('field_last_visit', today);
+  }
+
+  if (n > 0) {
+    let text = t.obsCount(n);
+    if (streak >= 2) text += `  ·  ${streak}${lang==='en'?' days':' días'}`;
+    el.textContent = text;
+  } else {
+    el.textContent = '';
+  }
 }
 
 // ── HOME ──
@@ -1005,10 +1064,11 @@ function clearGhosts() {
 }
 function goHome() {
   closeSettings();
-  const cameFromDecohere = currentMode === 'decohere-end';
+  const cameFromDecohere = currentMode === 'decohere-end' || currentMode === 'decohere';
   currentMode = 'home';
   clearAllBreath(); clearObserver(); clearAllDec();
   clearGhosts();
+  restoreCircadianPalette(); // restore from any movement-specific palette
   fadeDrone(true, 1.5);
   particlesHidden = false; collapseStage = 0; breathRunning = false; bgDimTarget = 1;
   isTransitioning = false; // [TECH3] reset on return home
@@ -1028,7 +1088,7 @@ function goHome() {
       setTimeout(() => {
         spParticles = Array.from({length:12}, (_,i) => new SpParticle(i,12));
         spParticles.forEach(p => {
-          p._flickering = false; // [TECH2]
+          p._flickering = false;
           p.x = innerWidth/2 + (Math.random()-0.5)*30;
           p.y = innerHeight/2 + (Math.random()-0.5)*30;
           p.targetAlpha = 0;
@@ -1037,6 +1097,15 @@ function goHome() {
         setTimeout(() => {
           spParticles.forEach(p => { p.targetAlpha = 0.42+Math.random()*0.22; });
         }, 300);
+        // Pulse movement glyphs once — gentle acknowledgement
+        setTimeout(() => {
+          document.querySelectorAll('.movement').forEach((m, i) => {
+            setTimeout(() => {
+              m.classList.add('lit');
+              setTimeout(() => m.classList.remove('lit'), 1200);
+            }, i * 180);
+          });
+        }, 1800);
       }, 100);
     } else {
       setTimeout(() => { initSpParticles(12); tryDrone(); }, 200);
@@ -1057,6 +1126,25 @@ function goHome() {
     } else {
       hintEl.style.opacity = '0';
     }
+  }
+
+  // Returning user whisper — quiet continuity, no gamification
+  if (collapseCount > 0) {
+    const whisperEl = document.createElement('div');
+    whisperEl.style.cssText = `position:fixed;bottom:clamp(96px,18vw,128px);left:50%;
+      transform:translateX(-50%);font-size:clamp(10px,2.5vw,12px);
+      letter-spacing:.22em;text-transform:uppercase;
+      color:rgba(240,220,180,.22);pointer-events:none;z-index:2;
+      opacity:0;transition:opacity 2s ease;white-space:nowrap;`;
+    // Days since first use (approximate via session count)
+    const sessionLabel = collapseCount === 1
+      ? (lang === 'en' ? 'first return' : 'primer retorno')
+      : (lang === 'en' ? `session ${collapseCount + 1}` : `sesión ${collapseCount + 1}`);
+    whisperEl.textContent = sessionLabel;
+    document.body.appendChild(whisperEl);
+    setTimeout(() => { whisperEl.style.opacity = '1'; }, 2800);
+    setTimeout(() => { whisperEl.style.opacity = '0'; }, 7000);
+    setTimeout(() => { whisperEl.remove(); }, 9000);
   }
   setTimeout(() => {
     const obs = parseInt(localStorage.getItem('field_obs')||'0');
@@ -1822,7 +1910,7 @@ function startVoiceNoting(micBtn, transcriptEl) {
           if (transcriptEl) { transcriptEl.style.opacity = '0'; }
           setTimeout(() => { if (transcriptEl) transcriptEl.textContent = ''; }, 600);
         }
-      }, 2400);
+      }, 4000); // was 2400 — more time to breathe between notes
     }
   };
 
@@ -1957,7 +2045,7 @@ function startNotingStorm() {
     const words = STORM_WORDS[lang];
     const word = words[Math.floor(Math.random() * words.length)];
     pulseStormWord(word);
-  }, 2600);
+  }, 5500); // was 2600 — much slower
 }
 function clearStormTimer() {
   if (stormTimer) clearInterval(stormTimer);
@@ -2335,19 +2423,26 @@ function startBreath() {
     } else if (phase === 'crystallised') {
       // Word fully dissolved
       if (breathOrb) breathOrb.wordTargetAlpha = 0;
+      // Third dot — lights on crystallise since there's no rest after final exhale
+      const dot2 = document.getElementById('bdot2');
+      if (dot2) dot2.classList.add('done');
     }
   };
 
   breathOrb.onCyclesDone = () => {
     breathRunning = false;
     btext.style.transition = 'opacity 0.9s ease'; btext.style.opacity = '0';
-    // Restore chosen particle from breath orb position
+    // Seamless handoff — particle inherits orb's exact centre position
     if (chosen) {
-      chosen.x = breathOrb ? breathOrb.x : innerWidth * 0.5;
-      chosen.y = breathOrb ? breathOrb.y : innerHeight * 0.5;
+      const ox = breathOrb ? breathOrb.x : innerWidth * 0.5;
+      const oy = breathOrb ? breathOrb.y : innerHeight * 0.5;
+      chosen.x  = ox; chosen.y  = oy;
+      chosen.cx = ox / innerWidth;
+      chosen.cy = oy / innerHeight;
       chosen.targetAlpha = 1; chosen.targetClarity = 1; chosen._flickering = false;
     }
-    breathOrb = null; // remove orb — sp particle takes back over
+    // Null orb one frame later so particle draws from same position with no gap
+    requestAnimationFrame(() => { breathOrb = null; });
     initScene('state_chosen', spChosen);
     const tapEl = document.getElementById('tapNext');
     bDelay(() => { tapEl.style.transition = 'opacity 0.8s ease'; tapEl.style.opacity = '1'; }, 1600);
@@ -2427,12 +2522,12 @@ function initStormWords() {
   const spawnNext = () => {
     if (currentMode !== 'storm') return;
     spawnStormWord();
-    const next = 600 + Math.random() * 900; // much faster spawn
+    const next = 4000 + Math.random() * 4000; // much slower — contemplative pace
     stormScreenTimer = setTimeout(spawnNext, next);
   };
-  // Seed with several words immediately
-  spawnStormWord(); spawnStormWord(); spawnStormWord(); spawnStormWord();
-  stormScreenTimer = setTimeout(spawnNext, 400);
+  // Seed with one word, breathe before the storm builds
+  spawnStormWord();
+  stormScreenTimer = setTimeout(spawnNext, 3500);
 
   const animateStorm = () => {
     if (currentMode !== 'storm') return;
@@ -2505,18 +2600,18 @@ function spawnStormWord() {
   const y = safeT + Math.random() * Math.max(0, safeB - safeT);
   el.style.left = x + 'px';
   el.style.top = y + 'px';
-  const speed = 0.04 + Math.random() * 0.06;
+  const speed = 0.018 + Math.random() * 0.025; // much slower drift
   const angle = Math.random() * Math.PI * 2;
-  const maxAlpha = 0.55 + Math.random() * 0.4;
+  const maxAlpha = 0.45 + Math.random() * 0.35;
   const wordObj = {
     el, x, y,
     vx: Math.cos(angle) * speed,
-    vy: Math.sin(angle) * speed - 0.02,
+    vy: Math.sin(angle) * speed - 0.008,
     alpha: 0,
     targetAlpha: maxAlpha,
     phase: Math.random() * Math.PI * 2,
     born: Date.now(),
-    holdMs: 800 + Math.random() * 1200,
+    holdMs: 5000 + Math.random() * 5000,  // linger 5–10s
     fading: false
   };
   stormActiveWords.push(wordObj);
@@ -2562,6 +2657,8 @@ function startDecohere() {
   currentMode = 'decohere'; showBackBtn();
   document.getElementById('backBtn').onclick = () => goHome();
   clearGhosts();
+  // Violet colour temperature for Decohere movement
+  applyDecoherePalette();
   fadeDrone(true, 1.5); spParticles = [];
   setTimeout(() => {
     initSpParticles(10);
@@ -2576,8 +2673,10 @@ function startDecohere() {
   // Restore default padding/gap for shadow grid view
   const scr = document.getElementById('s-decohere');
   if (scr) { scr.style.paddingTop = ''; scr.style.gap = ''; }
-  document.getElementById('decArrivalLine').textContent = t.decArrivalLine;
-  document.getElementById('decArrivalSub').textContent = t.decArrivalSub;
+  const arrLine = document.getElementById('decArrivalLine');
+  const arrSub  = document.getElementById('decArrivalSub');
+  arrLine.textContent = t.decArrivalLine; arrLine.style.opacity = '1';
+  arrSub.textContent  = t.decArrivalSub;  arrSub.style.opacity  = '1';
   showScreen('s-decohere');
 }
 
@@ -2656,8 +2755,8 @@ function showBodyMap(mode, payload) {
   // Colours per mode
   const spotColor    = isDecohere ? 'rgba(200,185,210,' : 'rgba(240,204,136,';
   const spotGlow     = isDecohere ? 'rgba(180,160,200,' : 'rgba(240,190,80,';
-  const ptColor      = isDecohere ? 'rgba(210,190,225,1)' : 'rgba(240,210,140,1)';
-  const ptGlowColor  = isDecohere ? 'rgba(200,170,220,' : 'rgba(240,204,136,';
+  const ptColor      = isDecohere ? 'rgba(230,215,245,1)' : 'rgba(240,210,140,1)';
+  const ptGlowColor  = isDecohere ? 'rgba(210,185,235,' : 'rgba(240,204,136,';
 
   const question = isDecohere
     ? (lang === 'en' ? 'Where do you feel it most?' : '¿Dónde lo sientes más?')
@@ -2669,8 +2768,8 @@ function showBodyMap(mode, payload) {
     const grid = document.getElementById('shadowGrid');
     const line = document.getElementById('decArrivalLine');
     const sub  = document.getElementById('decArrivalSub');
-    if (line) line.textContent = question;
-    if (sub)  sub.textContent = '';
+    if (line) { line.style.transition = 'opacity 0.5s ease'; line.style.opacity = '0'; }
+    if (sub)  { sub.style.transition  = 'opacity 0.5s ease'; sub.style.opacity  = '0'; }
     // Remove padding constraints — full screen figure
     const scr = document.getElementById('s-decohere');
     if (scr) { scr.style.paddingTop = '0'; scr.style.gap = '0'; }
@@ -2698,9 +2797,9 @@ function showBodyMap(mode, payload) {
 
     // Question label
     const qEl = document.createElement('div');
-    qEl.style.cssText = `position:absolute;top:clamp(72px,16vw,96px);left:50%;
-      transform:translateX(-50%);font-size:clamp(18px,5vw,26px);font-weight:300;
-      color:rgba(240,230,208,.72);letter-spacing:.04em;text-align:center;
+    qEl.style.cssText = `position:absolute;bottom:clamp(36px,9vw,60px);left:50%;
+      transform:translateX(-50%);font-size:clamp(16px,4.2vw,22px);font-weight:300;
+      color:rgba(240,230,208,.65);letter-spacing:.04em;text-align:center;
       pointer-events:none;z-index:2;line-height:1.5;white-space:nowrap;`;
     qEl.textContent = question;
     wrap.appendChild(qEl);
@@ -2712,43 +2811,49 @@ function showBodyMap(mode, payload) {
     wrap.appendChild(fc);
     const fx = fc.getContext('2d');
 
-    // Zone definitions — Y fractions of screen height, centred around figure
-    // Figure occupies roughly 28–82% of screen height, 30–70% of width
-    const FIG_TOP  = 0.16,  FIG_BOT = 0.88;
-    const FIG_L    = 0.25,  FIG_R   = 0.75;
+    // Figure: wider, less cramped, leaves room at bottom for question
+    // Head will be drawn with equal rr on X and Y (circular, not oval)
+    const FIG_TOP  = 0.10,  FIG_BOT = 0.78;  // leaves bottom 22% for question
+    const FIG_L    = 0.18,  FIG_R   = 0.82;  // wider: 64% of screen width
     const figH = (FIG_BOT - FIG_TOP) * H;
     const figW = (FIG_R - FIG_L) * W;
     const figX = FIG_L * W, figY = FIG_TOP * H;
 
-    // Dot positions as fraction of figure space
+    // Question positioned at bottom — already set in initial CSS
+
+    // Dot positions — head uses equal rr (circular in screen space)
+    const aspectCorrect = figH / figW; // ~1.9 — compensate so head looks round
     const BODY_PTS_LOCAL = [
       ...(() => {
-        const pts = []; const cx=0.5, cy=0.09, rr=0.072;
-        for(let a=0;a<Math.PI*2;a+=Math.PI/8) pts.push([cx+Math.cos(a)*rr, cy+Math.sin(a)*rr*1.1, 1.4, 7]);
+        const pts = []; const hcx=0.5, hcy=0.09, rr=0.065;
+        for(let a=0;a<Math.PI*2;a+=Math.PI/8) {
+          // Equal angular spacing, compensate for tall aspect ratio
+          pts.push([hcx+Math.cos(a)*rr, hcy+Math.sin(a)*rr/aspectCorrect*1.0, 1.5, 8]);
+        }
         return pts;
       })(),
-      [0.5, 0.165, 1.2, 6],
-      [0.26, 0.215, 1.5, 8], [0.38, 0.20, 1.2, 6], [0.5, 0.195, 1.1, 5],
-      [0.62, 0.20, 1.2, 6], [0.74, 0.215, 1.5, 8],
-      [0.21, 0.28, 1.2, 6], [0.18, 0.35, 1.1, 5], [0.16, 0.42, 1.1, 5],
-      [0.79, 0.28, 1.2, 6], [0.82, 0.35, 1.1, 5], [0.84, 0.42, 1.1, 5],
-      [0.27, 0.26, 1.1, 5], [0.25, 0.34, 1.1, 5], [0.24, 0.42, 1.1, 5],
-      [0.73, 0.26, 1.1, 5], [0.75, 0.34, 1.1, 5], [0.76, 0.42, 1.1, 5],
-      [0.5, 0.25, 1.1, 5], [0.42, 0.28, 1.0, 4], [0.58, 0.28, 1.0, 4],
-      [0.30, 0.50, 1.1, 5], [0.38, 0.505, 1.0, 4], [0.5, 0.51, 1.1, 5],
-      [0.62, 0.505, 1.0, 4], [0.70, 0.50, 1.1, 5],
-      [0.14, 0.50, 1.1, 5], [0.12, 0.57, 1.1, 5],
-      [0.86, 0.50, 1.1, 5], [0.88, 0.57, 1.1, 5],
-      [0.28, 0.595, 1.4, 7], [0.38, 0.60, 1.1, 5], [0.5, 0.605, 1.2, 5],
-      [0.62, 0.60, 1.1, 5], [0.72, 0.595, 1.4, 7],
+      [0.5, 0.155, 1.3, 6],
+      [0.26, 0.205, 1.6, 8], [0.38, 0.19, 1.3, 6], [0.5, 0.185, 1.2, 5],
+      [0.62, 0.19, 1.3, 6], [0.74, 0.205, 1.6, 8],
+      [0.21, 0.27, 1.3, 6], [0.18, 0.34, 1.2, 5], [0.16, 0.41, 1.2, 5],
+      [0.79, 0.27, 1.3, 6], [0.82, 0.34, 1.2, 5], [0.84, 0.41, 1.2, 5],
+      [0.27, 0.25, 1.2, 5], [0.25, 0.33, 1.2, 5], [0.24, 0.41, 1.2, 5],
+      [0.73, 0.25, 1.2, 5], [0.75, 0.33, 1.2, 5], [0.76, 0.41, 1.2, 5],
+      [0.5, 0.24, 1.2, 5], [0.42, 0.27, 1.1, 4], [0.58, 0.27, 1.1, 4],
+      [0.30, 0.49, 1.2, 5], [0.38, 0.495, 1.1, 4], [0.5, 0.50, 1.2, 5],
+      [0.62, 0.495, 1.1, 4], [0.70, 0.49, 1.2, 5],
+      [0.14, 0.49, 1.2, 5], [0.12, 0.56, 1.2, 5],
+      [0.86, 0.49, 1.2, 5], [0.88, 0.56, 1.2, 5],
+      [0.28, 0.585, 1.5, 7], [0.38, 0.59, 1.2, 5], [0.5, 0.595, 1.3, 5],
+      [0.62, 0.59, 1.2, 5], [0.72, 0.585, 1.5, 7],
     ];
 
     const SPOT_BANDS_Y = {
-      head:    [0.00, 0.20],
-      throat:  [0.14, 0.26],
-      chest:   [0.22, 0.44],
-      stomach: [0.42, 0.56],
-      pelvis:  [0.54, 0.72],
+      head:    [0.00, 0.18],
+      throat:  [0.13, 0.24],
+      chest:   [0.20, 0.42],
+      stomach: [0.40, 0.54],
+      pelvis:  [0.52, 0.70],
     };
 
     // Zone label positions (fraction of figure height from top)
@@ -2795,9 +2900,9 @@ function showBodyMap(mode, payload) {
         const pulse = inSpot
           ? 0.6 + 0.4 * Math.sin(glowPhase * 2.2)
           : 0.45 + 0.14 * Math.sin(glowPhase + nx * 4);
-        const alpha = inSpot ? 0.65 + 0.3 * pulse : 0.20 + 0.10 * pulse;
-        const glowA = inSpot ? 0.28 * pulse : 0.07 * pulse;
-        const glowRad = inSpot ? gr * 2.2 : gr * 1.2;
+        const alpha = inSpot ? 0.85 + 0.15 * pulse : 0.45 + 0.15 * pulse;
+        const glowA = inSpot ? 0.38 * pulse : 0.14 * pulse;
+        const glowRad = inSpot ? gr * 2.2 : gr * 1.4;
 
         const grad = fx.createRadialGradient(px, py, 0, px, py, glowRad);
         grad.addColorStop(0, `${ptGlowColor}${glowA.toFixed(3)})`);
@@ -2810,16 +2915,16 @@ function showBodyMap(mode, payload) {
         fx.globalAlpha = 1;
       });
 
-      // Draw zone labels at right side of figure — dim unless active
+      // Draw zone labels at LEFT side of figure — clear of the figure outline
       ZONES.forEach(z => {
-        const lx = figX + figW * 0.82;
+        const lx = figX - figW * 0.06; // left edge with small gap
         const ly = figY + z.labelY * figH;
         const isActive = activeSpot === z.key;
-        const lAlpha = isActive ? 0.90 : 0.28 + 0.08 * Math.sin(glowPhase + z.labelY * 5);
+        const lAlpha = isActive ? 0.92 : 0.32 + 0.08 * Math.sin(glowPhase + z.labelY * 5);
         fx.globalAlpha = lAlpha;
-        fx.font = `300 ${Math.round(figW * 0.12)}px 'Plus Jakarta Sans', sans-serif`;
+        fx.font = `300 ${Math.round(figW * 0.11)}px 'Plus Jakarta Sans', sans-serif`;
         fx.fillStyle = isActive ? 'rgba(210,190,230,1)' : 'rgba(200,185,215,1)';
-        fx.textAlign = 'left';
+        fx.textAlign = 'right'; // right-align so text sits flush against figure left edge
         fx.fillText(ZONE_LABELS[lang][z.key], lx, ly);
         fx.globalAlpha = 1;
       });
@@ -3575,6 +3680,24 @@ function applyCircadianPalette() {
 // ── INIT ──
 applyLang();
 applyCircadianPalette();
+
+// Decohere violet palette — applied on entry, restored on exit
+function applyDecoherePalette() {
+  const root = document.documentElement.style;
+  root.setProperty('--gold',       '#9880b8'); // soft violet
+  root.setProperty('--gold-bright','#c8aae0'); // bright mauve
+  root.setProperty('--bg',         '#070609'); // deep violet-black
+  root.setProperty('--cream',      '#e0d8ec'); // lavender cream
+}
+function restoreCircadianPalette() {
+  // Remove overrides — cascade falls back to :root vars set by applyCircadianPalette
+  const root = document.documentElement.style;
+  root.removeProperty('--gold');
+  root.removeProperty('--gold-bright');
+  root.removeProperty('--bg');
+  root.removeProperty('--cream');
+  applyCircadianPalette(); // reapply time-of-day
+}
 if (fontLarge) document.body.classList.add('fs-large');
 
 if (!localStorage.getItem('field_welcomed')) {
