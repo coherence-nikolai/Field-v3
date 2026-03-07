@@ -1017,6 +1017,19 @@ function goHome() {
   });
   updateHomeCount();
   document.querySelectorAll('.movement').forEach(m => m.classList.remove('lit'));
+
+  // Guided entry hint — show for users who haven't done Collapse yet
+  const hintEl = document.getElementById('guided-hint');
+  const collapseCount = parseInt(localStorage.getItem('field_obs')||'0');
+  if (hintEl) {
+    const t = lang === 'en';
+    if (collapseCount === 0) {
+      hintEl.textContent = t ? 'new here? · begin with ↑' : '¿nuevo aquí? · empieza con ↑';
+      setTimeout(() => { hintEl.style.opacity = '1'; }, 1800);
+    } else {
+      hintEl.style.opacity = '0';
+    }
+  }
   setTimeout(() => {
     const obs = parseInt(localStorage.getItem('field_obs')||'0');
     const dec = parseInt(localStorage.getItem('field_obs_decohere')||'0');
@@ -1149,11 +1162,11 @@ function buildObsScreen() {
 
       const micBtn = document.createElement('button');
       micBtn.id = 'mic-btn';
-      micBtn.innerHTML = '<span id="mic-icon">&#9679;</span>';
+      micBtn.innerHTML = '&#127908;';
       micBtn.style.cssText = 'background:none;border:1px solid rgba(201,169,110,.18);border-radius:50%;' +
-        'width:52px;height:52px;font-size:18px;color:rgba(201,169,110,.35);cursor:pointer;' +
+        'width:52px;height:52px;font-size:22px;color:rgba(201,169,110,.45);cursor:pointer;' +
         '-webkit-tap-highlight-color:transparent;transition:all .4s ease;display:flex;' +
-        'align-items:center;justify-content:center;';
+        'align-items:center;justify-content:center;line-height:1;';
       micBtn.title = t ? 'voice note' : 'nota de voz';
 
       const voiceLabel = document.createElement('div');
@@ -1746,6 +1759,7 @@ function startVoiceNoting(micBtn, transcriptEl) {
   voiceRecognition.lang = lang === 'es' ? 'es-ES' : 'en-US';
 
   voiceActive = true;
+  micBtn.innerHTML = '&#9679;';
   micBtn.style.borderColor = 'rgba(201,169,110,.7)';
   micBtn.style.color = 'rgba(240,204,136,.9)';
   micBtn.style.boxShadow = '0 0 18px rgba(201,169,110,.3)';
@@ -1802,8 +1816,9 @@ function stopVoiceNoting(micBtn, transcriptEl) {
     voiceRecognition = null;
   }
   if (micBtn) {
+    micBtn.innerHTML = '&#127908;';
     micBtn.style.borderColor = 'rgba(201,169,110,.18)';
-    micBtn.style.color = 'rgba(201,169,110,.35)';
+    micBtn.style.color = 'rgba(201,169,110,.45)';
     micBtn.style.boxShadow = 'none';
     micBtn.style.animation = 'none';
   }
@@ -3307,8 +3322,41 @@ document.getElementById('wlcEnterBtn').addEventListener('click', e => {
   enterFromWelcome();
 });
 
+// ── CIRCADIAN PALETTE ──
+function applyCircadianPalette() {
+  const h = new Date().getHours();
+  const root = document.documentElement.style;
+
+  if (h >= 5 && h < 8) {
+    // Dawn — rose-gold, warm amber
+    root.setProperty('--gold', '#c9956a');
+    root.setProperty('--gold-bright', '#f0b878');
+    root.setProperty('--bg', '#0d0806');
+    root.setProperty('--cream', '#f0dfc8');
+  } else if (h >= 8 && h < 17) {
+    // Day — default palette, slightly brighter
+    root.setProperty('--gold', '#c9a96e');
+    root.setProperty('--gold-bright', '#f0cc88');
+    root.setProperty('--bg', '#0a0805');
+    root.setProperty('--cream', '#f0e6d0');
+  } else if (h >= 17 && h < 20) {
+    // Dusk — deeper amber, slightly dimmer
+    root.setProperty('--gold', '#c49058');
+    root.setProperty('--gold-bright', '#e8b870');
+    root.setProperty('--bg', '#0c0906');
+    root.setProperty('--cream', '#ecdbc0');
+  } else {
+    // Night — cooler, moonlike silver-gold
+    root.setProperty('--gold', '#a89878');
+    root.setProperty('--gold-bright', '#d4c098');
+    root.setProperty('--bg', '#080706');
+    root.setProperty('--cream', '#e0d8cc');
+  }
+}
+
 // ── INIT ──
 applyLang();
+applyCircadianPalette();
 if (fontLarge) document.body.classList.add('fs-large');
 
 if (!localStorage.getItem('field_welcomed')) {
