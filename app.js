@@ -47,6 +47,12 @@ let motionCheckInterval = null;
 // Decohere state
 let decStateName = '', decStateNameES = '';
 let decBodySpot = 'chest';
+let collapseBodySpot = 'chest';
+
+// Voice noting state
+let voiceRecognition = null;
+let voiceActive = false;
+let voiceTranscript = '';
 
 // Observe mode state
 let obsMode = 'drift';
@@ -839,6 +845,41 @@ function buildObsScreen() {
     stormLink.textContent = lang === 'en' ? 'enter storm' : 'entrar tormenta';
     stormLink.addEventListener('click', () => { clearObserver(); startStormScreen(); });
     stormLink.addEventListener('touchend', e => { e.preventDefault(); clearObserver(); startStormScreen(); });
+
+    // Voice noting button — only if Web Speech API available
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const voiceWrap = document.createElement('div');
+      voiceWrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:10px;width:100%;margin-top:4px;';
+
+      const micBtn = document.createElement('button');
+      micBtn.id = 'mic-btn';
+      micBtn.innerHTML = '<span id="mic-icon">&#9679;</span>';
+      micBtn.style.cssText = 'background:none;border:1px solid rgba(201,169,110,.18);border-radius:50%;' +
+        'width:52px;height:52px;font-size:18px;color:rgba(201,169,110,.35);cursor:pointer;' +
+        '-webkit-tap-highlight-color:transparent;transition:all .4s ease;display:flex;' +
+        'align-items:center;justify-content:center;';
+      micBtn.title = t ? 'voice note' : 'nota de voz';
+
+      const voiceLabel = document.createElement('div');
+      voiceLabel.id = 'voice-label';
+      voiceLabel.style.cssText = 'font-size:clamp(10px,2.5vw,12px);letter-spacing:.14em;color:rgba(201,169,110,.28);';
+      voiceLabel.textContent = t ? 'voice' : 'voz';
+
+      const voiceTranscriptEl = document.createElement('div');
+      voiceTranscriptEl.id = 'voice-transcript';
+      voiceTranscriptEl.style.cssText = 'font-size:clamp(13px,3.2vw,15px);letter-spacing:.04em;' +
+        'color:rgba(240,230,208,.42);font-style:italic;min-height:22px;max-width:280px;' +
+        'text-align:center;line-height:1.5;opacity:0;transition:opacity .6s ease;';
+
+      micBtn.addEventListener('click', () => toggleVoiceNoting(micBtn, voiceTranscriptEl));
+      micBtn.addEventListener('touchend', e => { e.preventDefault(); toggleVoiceNoting(micBtn, voiceTranscriptEl); });
+
+      voiceWrap.appendChild(micBtn);
+      voiceWrap.appendChild(voiceLabel);
+      voiceWrap.appendChild(voiceTranscriptEl);
+      document.querySelector('.observe-alt-wrap').appendChild(voiceWrap);
+    }
+
     document.querySelector('.observe-alt-wrap').appendChild(stormLink);
     return;
   }
@@ -1360,7 +1401,137 @@ function reachObsCoherence() {
   }, 2200);
 }
 
+// ── VOICE NOTING ──
+function toggleVoiceNoting(micBtn, transcriptEl) {
+  if (voiceActive) {
+    stopVoiceNoting(micBtn, transcriptEl);
+  } else {
+    startVoiceNoting(micBtn, transcriptEl);
+  }
+}
+
+function startVoiceNoting(micBtn, transcriptEl) {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) return;
+
+  voiceRecognition = new SpeechRecognition();
+  voiceRecognition.continuous = true;
+  voiceRecognition.interimResults = true;
+  voiceRecognition.lang = lang === 'es' ? 'es-ES' : 'en-US';
+
+  voiceActive = true;
+  micBtn.style.borderColor = 'rgba(201,169,110,.7)';
+  micBtn.style.color = 'rgba(240,204,136,.9)';
+  micBtn.style.boxShadow = '0 0 18px rgba(201,169,110,.3)';
+  micBtn.style.animation = 'micPulse 1.4s ease-in-out infinite';
+
+  const voiceLabel = document.getElementById('voice-label');
+  if (voiceLabel) voiceLabel.textContent = lang === 'en' ? 'listening...' : 'escuchando...';
+
+  let finalTranscript = '';
+  let silenceTimer = null;
+
+  voiceRecognition.onresult = e => {
+    let interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript;
+      if (e.results[i].isFinal) { finalTranscript += t + ' '; }
+      else { interim = t; }
+    }
+    const display = (finalTranscript + interim).trim();
+    voiceTranscript = display;
+    if (transcriptEl) {
+      transcriptEl.textContent = display;
+      transcriptEl.style.opacity = display ? '1' : '0';
+    }
+    // Auto-note after 2.4s silence
+    clearTimeout(silenceTimer);
+    if (finalTranscript.trim().length > 2) {
+      silenceTimer = setTimeout(() => {
+        if (voiceActive && finalTranscript.trim()) {
+          autoNoteFromVoice(finalTranscript.trim());
+          finalTranscript = '';
+          if (transcriptEl) { transcriptEl.style.opacity = '0'; }
+          setTimeout(() => { if (transcriptEl) transcriptEl.textContent = ''; }, 600);
+        }
+      }, 2400);
+    }
+  };
+
+  voiceRecognition.onerror = () => stopVoiceNoting(micBtn, transcriptEl);
+  voiceRecognition.onend = () => {
+    // Auto-restart if still supposed to be active
+    if (voiceActive) {
+      try { voiceRecognition.start(); } catch(e) {}
+    }
+  };
+
+  try { voiceRecognition.start(); } catch(e) { voiceActive = false; }
+}
+
+function stopVoiceNoting(micBtn, transcriptEl) {
+  voiceActive = false;
+  if (voiceRecognition) {
+    try { voiceRecognition.stop(); } catch(e) {}
+    voiceRecognition = null;
+  }
+  if (micBtn) {
+    micBtn.style.borderColor = 'rgba(201,169,110,.18)';
+    micBtn.style.color = 'rgba(201,169,110,.35)';
+    micBtn.style.boxShadow = 'none';
+    micBtn.style.animation = 'none';
+  }
+  const voiceLabel = document.getElementById('voice-label');
+  if (voiceLabel) voiceLabel.textContent = lang === 'en' ? 'voice' : 'voz';
+  if (transcriptEl) { transcriptEl.style.opacity = '0'; }
+  voiceTranscript = '';
+}
+
+function autoNoteFromVoice(transcript) {
+  // Map spoken words to sense + tone, or just increment as a mind/neutral note
+  const lower = transcript.toLowerCase();
+  let sense = 'mind';
+  let tone = 'neutral';
+
+  // Rough sense detection from keywords
+  if (/see|look|light|dark|colour|color|shape|vision|saw/.test(lower)) sense = 'seeing';
+  else if (/hear|sound|noise|voice|ring|tone|quiet/.test(lower)) sense = 'hearing';
+  else if (/smell|scent|odour|aroma/.test(lower)) sense = 'smell';
+  else if (/taste|bitter|sweet|sour/.test(lower)) sense = 'taste';
+  else if (/feel|tight|heavy|light|pain|warm|cold|pressure|breath|chest|stomach|head|heart/.test(lower)) sense = 'body';
+
+  // Rough tone detection
+  const pleasantWords = /calm|peace|open|ease|gentle|warm|bright|soft|clear|good|nice|relax|free/;
+  const unpleasantWords = /tight|heavy|pain|fear|worry|anxious|stuck|dark|hard|difficult|scared|angry|sad/;
+  if (pleasantWords.test(lower)) tone = 'pleasant';
+  else if (unpleasantWords.test(lower)) tone = 'unpleasant';
+
+  // Show transcript briefly as confirmation
+  const counter = document.getElementById('noteCounter');
+  const flash = document.createElement('div');
+  flash.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);' +
+    'font-size:clamp(12px,3vw,14px);letter-spacing:.12em;color:rgba(201,169,110,.55);' +
+    'pointer-events:none;z-index:50;opacity:0;transition:opacity .5s ease;text-align:center;' +
+    'font-style:italic;max-width:260px;line-height:1.5;';
+  flash.textContent = transcript.length > 40 ? transcript.slice(0, 40) + '…' : transcript;
+  document.body.appendChild(flash);
+  requestAnimationFrame(() => { flash.style.opacity = '1'; });
+  setTimeout(() => {
+    flash.style.opacity = '0';
+    setTimeout(() => flash.remove(), 600);
+  }, 1800);
+
+  // Trigger a virtual sense+tone note
+  const fakeSenseBtn = document.querySelector(`.sense-chip`);
+  chooseNoteSense(sense, null);
+  setTimeout(() => {
+    const fakeToneBtn = document.querySelector(`.tone-chip[data-tone-key="${tone}"]`);
+    chooseNoteTone(tone, fakeToneBtn);
+  }, 120);
+}
+
 function clearObserver() {
+  if (voiceActive) stopVoiceNoting(null, null);
   clearInterval(attentionTimer); clearInterval(microToneTimer);
   clearInterval(motionCheckInterval); clearInterval(obsTimerInterval);
   fieldActive = false; isCoherent = false;
@@ -1549,10 +1720,9 @@ function buildCollapseField() {
     const len = st.name.length;
     const size = len<=5?'clamp(32px,9vw,46px)':len<=7?'clamp(28px,7.5vw,38px)':len<=8?'clamp(24px,6.5vw,32px)':len<=10?'clamp(20px,5.5vw,28px)':'clamp(18px,4.8vw,24px)';
     o.innerHTML = `<div class="oname" style="font-size:${size}">${st.name}</div>`;
-    // [AE2] Orb hover: brief sharp-pulse before collapse
+    // [AE2] Orb hover: brief sharp-pulse, then body map, then collapse
     const go = () => {
       if (isTransitioning) return; // [TECH3]
-      // Flash the orb to full clarity for 180ms before collapsing
       o.style.filter = 'blur(0px)';
       o.style.opacity = '1';
       o.querySelector('.oname').style.color = 'rgba(255,235,180,1)';
@@ -1560,7 +1730,8 @@ function buildCollapseField() {
       setTimeout(() => {
         document.querySelectorAll('.orb').forEach(el => { el.classList.remove('collapsing'); el.classList.add('fading'); });
         o.classList.remove('fading'); o.classList.add('collapsing');
-        spChosen = idx; setTimeout(() => selectState(st), 320);
+        spChosen = idx;
+        setTimeout(() => showBodyMap('collapse', st), 320);
       }, 180);
     };
     o.addEventListener('click', go);
@@ -1850,17 +2021,18 @@ function initStormWords() {
   const spawnNext = () => {
     if (currentMode !== 'storm') return;
     spawnStormWord();
-    const next = 2200 + Math.random() * 1800;
+    const next = 600 + Math.random() * 900; // much faster spawn
     stormScreenTimer = setTimeout(spawnNext, next);
   };
-  spawnStormWord(); spawnStormWord();
-  stormScreenTimer = setTimeout(spawnNext, 2500);
+  // Seed with several words immediately
+  spawnStormWord(); spawnStormWord(); spawnStormWord(); spawnStormWord();
+  stormScreenTimer = setTimeout(spawnNext, 400);
 
   const animateStorm = () => {
     if (currentMode !== 'storm') return;
     stormActiveWords = stormActiveWords.filter(w => {
       w.phase += 0.008;
-      w.alpha += (w.targetAlpha - w.alpha) * 0.04;
+      w.alpha += (w.targetAlpha - w.alpha) * 0.09; // faster fade in/out
       w.x += w.vx;
       w.y += w.vy;
       const a = w.alpha.toFixed(3);
@@ -1900,33 +2072,40 @@ function initStormWords() {
 
 function spawnStormWord() {
   const layer = document.getElementById('storm-words-layer');
-  if (!layer || stormActiveWords.length > 5) return;
+  if (!layer || stormActiveWords.length > 9) return;
   const words = DHAMMA_WORDS[lang];
   const word = words[Math.floor(Math.random() * words.length)];
   const el = document.createElement('div');
   el.className = 'sw-word';
   el.textContent = word;
-  const sizes = ['clamp(13px,3.5vw,18px)', 'clamp(16px,4.5vw,24px)', 'clamp(11px,2.8vw,15px)'];
+  // Much larger — overwhelm scale
+  const sizes = [
+    'clamp(28px,8vw,48px)',
+    'clamp(36px,11vw,64px)',
+    'clamp(22px,6vw,36px)',
+    'clamp(44px,14vw,80px)',
+    'clamp(18px,5vw,28px)'
+  ];
   el.style.fontSize = sizes[Math.floor(Math.random() * sizes.length)];
-  const margin = 60;
-  const x = margin + Math.random() * (innerWidth - margin * 2 - 140);
-  const y = margin + Math.random() * (innerHeight - margin * 2 - 40);
+  const margin = 40;
+  const x = margin + Math.random() * (innerWidth - margin * 2 - 180);
+  const y = margin + Math.random() * (innerHeight - margin * 2 - 60);
   el.style.left = x + 'px';
   el.style.top = y + 'px';
   el.style.color = 'rgba(240,204,136,0)';
   layer.appendChild(el);
-  const speed = 0.08 + Math.random() * 0.12;
+  const speed = 0.04 + Math.random() * 0.06; // slower drift, words are big
   const angle = Math.random() * Math.PI * 2;
-  const maxAlpha = 0.25 + Math.random() * 0.45;
+  const maxAlpha = 0.55 + Math.random() * 0.4; // much brighter
   const wordObj = {
     el, x, y,
     vx: Math.cos(angle) * speed,
-    vy: Math.sin(angle) * speed - 0.05,
+    vy: Math.sin(angle) * speed - 0.02,
     alpha: 0,
     targetAlpha: maxAlpha,
     phase: Math.random() * Math.PI * 2,
     born: Date.now(),
-    holdMs: 2000 + Math.random() * 3000,
+    holdMs: 800 + Math.random() * 1200, // faster — 0.8–2s hold
     fading: false
   };
   stormActiveWords.push(wordObj);
@@ -2003,26 +2182,16 @@ function buildShadowGrid() {
   });
 }
 
-function showDecBodyMap() {
-  const grid = document.getElementById('shadowGrid');
-  const line = document.getElementById('decArrivalLine');
-  const sub = document.getElementById('decArrivalSub');
-  if (line) line.textContent = lang === 'en' ? 'Where do you feel it most?' : '¿Dónde lo sientes más?';
-  if (sub) sub.textContent = '';
-  if (!grid) return;
+// ══════════════════════════════════════
+// SHARED BODY MAP — used by both Decohere and Collapse
+// mode: 'decohere' | 'collapse'
+// payload: shadow state name (decohere) | state object (collapse)
+// ══════════════════════════════════════
+function showBodyMap(mode, payload) {
+  // For decohere: replace shadow grid in s-decohere
+  // For collapse: show s-bodymap screen
+  const isDecohere = mode === 'decohere';
 
-  grid.innerHTML = '<div class="bodymap-wrap" id="bodymapWrap"></div>';
-  const wrap = document.getElementById('bodymapWrap');
-
-  const figDiv = document.createElement('div');
-  figDiv.className = 'bodymap-figure';
-  const fc = document.createElement('canvas');
-  fc.width = 180; fc.height = 520;
-  figDiv.appendChild(fc);
-  wrap.appendChild(figDiv);
-
-  const fx = fc.getContext('2d');
-  const W = 180, H = 520;
   const BODY_PTS = [
     ...(() => {
       const pts = []; const cx=0.5, cy=0.09, rr=0.072;
@@ -2053,40 +2222,6 @@ function showDecBodyMap() {
     pelvis:  [0.54, 0.70],
   };
 
-  let activeSpot = null;
-  let glowPhase = 0;
-  let figRafId = null;
-
-  function drawFigure() {
-    if (currentMode !== 'decohere') { cancelAnimationFrame(figRafId); return; }
-    fx.clearRect(0, 0, W, H);
-    glowPhase += 0.03;
-    BODY_PTS.forEach(([nx, ny, r, gr]) => {
-      const px = nx * W, py = ny * H;
-      let inSpot = false;
-      if (activeSpot && SPOT_BANDS[activeSpot]) {
-        const [lo, hi] = SPOT_BANDS[activeSpot];
-        if (ny >= lo && ny <= hi) inSpot = true;
-      }
-      const pulse = inSpot ? 0.7 + 0.3 * Math.sin(glowPhase * 2) : 0.5 + 0.12 * Math.sin(glowPhase + nx * 3);
-      const alpha = inSpot ? 0.55 + 0.35 * pulse : 0.18 + 0.10 * pulse;
-      const glowA = inSpot ? 0.22 * pulse : 0.06 * pulse;
-      const glowRad = inSpot ? gr * 1.8 : gr;
-      const grad = fx.createRadialGradient(px, py, 0, px, py, glowRad);
-      grad.addColorStop(0, `rgba(240,204,136,${glowA.toFixed(3)})`);
-      grad.addColorStop(1, 'rgba(240,204,136,0)');
-      fx.fillStyle = grad;
-      fx.beginPath(); fx.arc(px, py, glowRad, 0, Math.PI*2); fx.fill();
-      fx.globalAlpha = alpha;
-      fx.fillStyle = `rgba(240,210,140,1)`;
-      fx.beginPath(); fx.arc(px, py, r * (inSpot ? 1.5 : 1), 0, Math.PI*2); fx.fill();
-      fx.globalAlpha = 1;
-    });
-    figRafId = requestAnimationFrame(drawFigure);
-  }
-  figRafId = requestAnimationFrame(drawFigure);
-
-  // [UX3] body-node left position clamped — safe on narrow screens
   const BODY_SPOTS = {
     en: [
       {key:'head',    label:'head',    top:9},
@@ -2104,6 +2239,88 @@ function showDecBodyMap() {
     ]
   };
 
+  // Colours per mode
+  const spotColor    = isDecohere ? 'rgba(200,185,210,' : 'rgba(240,204,136,';
+  const spotGlow     = isDecohere ? 'rgba(180,160,200,' : 'rgba(240,190,80,';
+  const ptColor      = isDecohere ? 'rgba(210,190,225,1)' : 'rgba(240,210,140,1)';
+  const ptGlowColor  = isDecohere ? 'rgba(200,170,220,' : 'rgba(240,204,136,';
+
+  const question = isDecohere
+    ? (lang === 'en' ? 'Where do you feel it most?' : '¿Dónde lo sientes más?')
+    : (lang === 'en' ? 'Where does it want to land?' : '¿Dónde quiere aterrizar?');
+
+  // Build DOM into the right container
+  let container, wrap;
+  if (isDecohere) {
+    const grid = document.getElementById('shadowGrid');
+    const line = document.getElementById('decArrivalLine');
+    const sub  = document.getElementById('decArrivalSub');
+    if (line) line.textContent = question;
+    if (sub)  sub.textContent = '';
+    grid.innerHTML = '<div class="bodymap-wrap" id="bodymapWrap"></div>';
+    wrap = document.getElementById('bodymapWrap');
+  } else {
+    // Collapse: use dedicated s-bodymap screen
+    const screen = document.getElementById('s-bodymap');
+    screen.innerHTML = '';
+    const header = document.createElement('div');
+    header.style.cssText = 'font-size:clamp(13px,3.2vw,16px);letter-spacing:.18em;color:rgba(201,169,110,.38);text-transform:uppercase;margin-bottom:6px;';
+    header.textContent = lang === 'en' ? 'where does it want to land?' : '¿dónde quiere aterrizar?';
+    screen.appendChild(header);
+    const bwrap = document.createElement('div');
+    bwrap.className = 'bodymap-wrap';
+    bwrap.id = 'bodymapWrap';
+    screen.appendChild(bwrap);
+    wrap = bwrap;
+    showScreen('s-bodymap');
+  }
+
+  // Canvas figure
+  const figDiv = document.createElement('div');
+  figDiv.className = 'bodymap-figure';
+  const fc = document.createElement('canvas');
+  fc.width = 180; fc.height = 520;
+  figDiv.appendChild(fc);
+  wrap.appendChild(figDiv);
+
+  const fx = fc.getContext('2d');
+  const W = 180, H = 520;
+
+  let activeSpot = null;
+  let glowPhase = 0;
+  let figRafId = null;
+
+  function drawFigure() {
+    if (isDecohere && currentMode !== 'decohere') { cancelAnimationFrame(figRafId); return; }
+    if (!isDecohere && currentMode !== 'collapse') { cancelAnimationFrame(figRafId); return; }
+    fx.clearRect(0, 0, W, H);
+    glowPhase += 0.03;
+    BODY_PTS.forEach(([nx, ny, r, gr]) => {
+      const px = nx * W, py = ny * H;
+      let inSpot = false;
+      if (activeSpot && SPOT_BANDS[activeSpot]) {
+        const [lo, hi] = SPOT_BANDS[activeSpot];
+        if (ny >= lo && ny <= hi) inSpot = true;
+      }
+      const pulse = inSpot ? 0.7 + 0.3 * Math.sin(glowPhase * 2) : 0.5 + 0.12 * Math.sin(glowPhase + nx * 3);
+      const alpha = inSpot ? 0.55 + 0.35 * pulse : 0.18 + 0.10 * pulse;
+      const glowA = inSpot ? 0.22 * pulse : 0.06 * pulse;
+      const glowRad = inSpot ? gr * 1.8 : gr;
+      const grad = fx.createRadialGradient(px, py, 0, px, py, glowRad);
+      grad.addColorStop(0, `${ptGlowColor}${glowA.toFixed(3)})`);
+      grad.addColorStop(1, `${ptGlowColor}0)`);
+      fx.fillStyle = grad;
+      fx.beginPath(); fx.arc(px, py, glowRad, 0, Math.PI*2); fx.fill();
+      fx.globalAlpha = alpha;
+      fx.fillStyle = ptColor;
+      fx.beginPath(); fx.arc(px, py, r * (inSpot ? 1.5 : 1), 0, Math.PI*2); fx.fill();
+      fx.globalAlpha = 1;
+    });
+    figRafId = requestAnimationFrame(drawFigure);
+  }
+  figRafId = requestAnimationFrame(drawFigure);
+
+  // Spot buttons
   BODY_SPOTS[lang].forEach((spot, idx) => {
     const b = document.createElement('button');
     b.className = 'body-node';
@@ -2112,19 +2329,60 @@ function showDecBodyMap() {
     b.style.opacity = '0';
     b.style.transition = 'opacity 0.9s ease, transform 0.9s ease';
     b.style.transform = 'translateX(-50%) translateY(8px)';
-    // [UX3] Use max() to prevent clipping on narrow screens — safe minimum 8px from edge
     b.style.left = 'max(8px, 22%)';
+
+    if (!isDecohere) {
+      // Collapse — right side labels
+      b.style.left = 'auto';
+      b.style.right = 'max(8px, 18%)';
+      b.style.transform = 'translateY(8px)';
+      b.style.transition = 'opacity 0.9s ease, transform 0.9s ease, border-color 0.3s ease, color 0.3s ease';
+    }
+
     b.addEventListener('click', () => {
-      decBodySpot = spot.key;
+      cancelAnimationFrame(figRafId);
       activeSpot = spot.key;
       document.querySelectorAll('.body-node').forEach(x => x.classList.remove('active'));
       b.classList.add('active');
-      cancelAnimationFrame(figRafId);
-      setTimeout(() => startDecAcknowledge(), 280);
+
+      if (isDecohere) {
+        decBodySpot = spot.key;
+        setTimeout(() => startDecAcknowledge(), 280);
+      } else {
+        // Collapse: set particle origin from body location, then proceed
+        collapseBodySpot = spot.key;
+        const spotFraction = idx / (BODY_SPOTS[lang].length - 1);
+        // Map spot fraction to canvas Y, then to screen Y
+        const pY = (0.09 + spotFraction * 0.55) * innerHeight;
+        const chosen = spParticles[spChosen % Math.max(spParticles.length, 1)];
+        if (chosen) {
+          chosen.cx = 0.5;
+          chosen.cy = 0.09 + spotFraction * 0.55;
+          chosen.x = innerWidth * 0.5;
+          chosen.y = pY;
+        }
+        setTimeout(() => {
+          showScreen('s-field', () => {
+            // brief return to field overlay, then straight into selectState
+            selectState(payload);
+          });
+        }, 220);
+      }
     });
+    b.addEventListener('touchend', e => { e.preventDefault(); b.click(); });
     wrap.appendChild(b);
-    setTimeout(() => { b.style.opacity = '1'; b.style.transform = 'translateX(-50%) translateY(0)'; }, 120 * idx);
+    setTimeout(() => {
+      b.style.opacity = '1';
+      b.style.transform = isDecohere
+        ? 'translateX(-50%) translateY(0)'
+        : 'translateY(0)';
+    }, 120 * idx);
   });
+}
+
+function showDecBodyMap() {
+  // Legacy wrapper — routes to shared showBodyMap
+  showBodyMap('decohere', null);
 }
 
 // PHASE 1: Acknowledgment — word fades in alone in silence, then breath begins
@@ -2440,61 +2698,85 @@ function startLandingScreen() {
   const lc = lcv.getContext('2d');
   const hint = document.getElementById('landingHint');
 
-  // [UX7] Use { once: true } to auto-clean the resize listener
-  function resizeLanding() {
-    lcv.width = innerWidth; lcv.height = innerHeight;
-  }
+  function resizeLanding() { lcv.width = innerWidth; lcv.height = innerHeight; }
   resizeLanding();
-  window.addEventListener('resize', resizeLanding, { once: false });
+  let resizeCleanedUp = false;
+  window.addEventListener('resize', resizeLanding);
+  function cleanupLandingResize() {
+    if (!resizeCleanedUp) { window.removeEventListener('resize', resizeLanding); resizeCleanedUp = true; }
+  }
 
-  let phase = 0;
-  let alpha = 0;
+  // Particle state — small, blurry, drifting
+  let px = innerWidth * 0.5;
+  let py = innerHeight * 0.45;
+  let vx = (Math.random() - 0.5) * 0.4;
+  let vy = (Math.random() - 0.5) * 0.4;
+  let phase = Math.random() * Math.PI * 2;
+  let phV = 0.008 + Math.random() * 0.006;
+
+  // Appearance state — starts tiny/blurry, sharpens on tap
+  let focusLevel = 0;   // 0 = blurry/dim, 1 = sharp/bright
+  let tapFocus = false;
   let collapsing = false;
   let collapseProgress = 0;
-  let resizeCleanedUp = false;
+  let hintAlpha = 0;
+  let age = 0;
 
-  function cleanupLandingResize() {
-    if (!resizeCleanedUp) {
-      window.removeEventListener('resize', resizeLanding);
-      resizeCleanedUp = true;
-    }
-  }
-
-  setTimeout(() => {
-    hint.style.color = 'rgba(240,204,136,0.35)';
-  }, 2000);
+  // Show hint after 2.5s
+  setTimeout(() => { hintAlpha = 1; hint.style.color = `rgba(240,204,136,0.30)`; }, 2500);
 
   function drawLanding() {
     if (!document.getElementById('s-landing').classList.contains('active')) {
-      cleanupLandingResize();
-      return;
+      cleanupLandingResize(); return;
     }
     lc.clearRect(0, 0, lcv.width, lcv.height);
-    phase += 0.012;
-    if (!collapsing) alpha = Math.min(alpha + 0.015, 1);
+    phase += phV;
+    age++;
 
-    const cx = lcv.width / 2;
-    const cy = lcv.height / 2;
-    const breathFactor = 0.82 + 0.18 * Math.sin(phase);
-    const baseR = Math.min(lcv.width, lcv.height) * 0.32;
+    // Drift — gentle Brownian motion with soft boundary
+    vx += (Math.random() - 0.5) * 0.04;
+    vy += (Math.random() - 0.5) * 0.04;
+    vx *= 0.96; vy *= 0.96;
+    // Push away from edges
+    const marg = 80;
+    if (px < marg) vx += 0.08;
+    if (px > innerWidth - marg) vx -= 0.08;
+    if (py < marg) vy += 0.08;
+    if (py > innerHeight - marg) vy -= 0.08;
+    px += vx; py += vy;
+
+    // Focus transition
+    if (tapFocus && !collapsing) {
+      focusLevel = Math.min(focusLevel + 0.04, 1);
+    } else if (!tapFocus && !collapsing) {
+      focusLevel = Math.max(focusLevel - 0.01, 0);
+    }
+
+    const breathe = 0.88 + 0.12 * Math.sin(phase);
 
     if (collapsing) {
-      collapseProgress += 0.04;
+      // Particle implodes inward, screen fades
+      collapseProgress += 0.025;
       const t = Math.min(collapseProgress, 1);
       const eased = 1 - Math.pow(1 - t, 3);
-      const r = baseR * breathFactor * (1 - eased * 0.85);
-      const ga = alpha * (1 - eased);
 
-      const glow = r * 2.5;
-      const g = lc.createRadialGradient(cx, cy, 0, cx, cy, glow);
-      g.addColorStop(0, `rgba(240,204,136,${(ga * 0.3).toFixed(3)})`);
+      // Particle shrinks and sharpens to nothing
+      const r = (3 + focusLevel * 6) * breathe * (1 - eased);
+      const gR = r * (6 - eased * 4);
+      const alpha = 1 - eased;
+
+      // Glow
+      const g = lc.createRadialGradient(px, py, 0, px, py, gR);
+      g.addColorStop(0, `rgba(240,204,136,${(alpha * 0.45).toFixed(3)})`);
+      g.addColorStop(0.5, `rgba(240,204,136,${(alpha * 0.12).toFixed(3)})`);
       g.addColorStop(1, 'rgba(240,204,136,0)');
       lc.fillStyle = g;
-      lc.beginPath(); lc.arc(cx, cy, glow, 0, Math.PI*2); lc.fill();
+      lc.beginPath(); lc.arc(px, py, gR, 0, Math.PI * 2); lc.fill();
 
-      lc.globalAlpha = ga;
-      lc.fillStyle = `rgba(201,169,110,${ga.toFixed(3)})`;
-      lc.beginPath(); lc.arc(cx, cy, r, 0, Math.PI*2); lc.fill();
+      // Core
+      lc.globalAlpha = alpha * (0.5 + focusLevel * 0.5);
+      lc.fillStyle = 'rgba(240,210,140,1)';
+      lc.beginPath(); lc.arc(px, py, Math.max(r, 0.5), 0, Math.PI * 2); lc.fill();
       lc.globalAlpha = 1;
 
       if (collapseProgress >= 1) {
@@ -2505,41 +2787,91 @@ function startLandingScreen() {
         document.getElementById('s-landing').classList.remove('active');
         document.getElementById('s-welcome').classList.add('active');
         const w0 = document.getElementById('wlc0');
-        if (w0) { w0.style.opacity = '0'; w0.style.transition = 'none'; w0.classList.add('on'); requestAnimationFrame(() => requestAnimationFrame(() => { w0.style.transition = 'opacity 1.2s ease'; w0.style.opacity = '1'; })); }
+        if (w0) {
+          w0.style.opacity = '0'; w0.style.transition = 'none'; w0.classList.add('on');
+          requestAnimationFrame(() => requestAnimationFrame(() => {
+            w0.style.transition = 'opacity 1.2s ease'; w0.style.opacity = '1';
+          }));
+        }
         return;
       }
     } else {
-      const glow = baseR * breathFactor * 2.2;
-      const g = lc.createRadialGradient(cx, cy, 0, cx, cy, glow);
-      g.addColorStop(0, `rgba(240,204,136,${(alpha * 0.18).toFixed(3)})`);
-      g.addColorStop(0.4, `rgba(240,204,136,${(alpha * 0.08).toFixed(3)})`);
+      // Normal drifting particle
+      // Size: tiny when blurry, grows a little on focus
+      const coreR = (2.5 + focusLevel * 5) * breathe;
+      const glowR = coreR * (8 - focusLevel * 4); // big hazy glow when unfocused, tighter when focused
+      const coreAlpha = 0.18 + focusLevel * 0.65;
+      const glowAlpha = 0.06 + focusLevel * 0.18;
+
+      // Soft gaussian glow
+      const g = lc.createRadialGradient(px, py, 0, px, py, glowR);
+      g.addColorStop(0, `rgba(240,204,136,${(glowAlpha * 1.5).toFixed(3)})`);
+      g.addColorStop(0.3, `rgba(240,204,136,${glowAlpha.toFixed(3)})`);
       g.addColorStop(1, 'rgba(240,204,136,0)');
       lc.fillStyle = g;
-      lc.beginPath(); lc.arc(cx, cy, glow, 0, Math.PI*2); lc.fill();
+      lc.beginPath(); lc.arc(px, py, glowR, 0, Math.PI * 2); lc.fill();
 
-      const r = baseR * breathFactor;
-      lc.globalAlpha = alpha * 0.55;
-      lc.fillStyle = 'rgba(201,169,110,1)';
-      lc.beginPath(); lc.arc(cx, cy, r, 0, Math.PI*2); lc.fill();
+      // Core dot
+      lc.globalAlpha = coreAlpha;
+      lc.fillStyle = 'rgba(240,210,140,1)';
+      lc.beginPath(); lc.arc(px, py, coreR, 0, Math.PI * 2); lc.fill();
       lc.globalAlpha = 1;
     }
+
     landingRaf = requestAnimationFrame(drawLanding);
   }
   landingRaf = requestAnimationFrame(drawLanding);
 
-  function onTap(e) {
+  // Pointer/touch: hold to focus, tap to collapse
+  let holdTimer = null;
+
+  function onPointerDown(e) {
+    if (collapsing) return;
+    tapFocus = true;
+    // After holding focused for 0.4s, collapse
+    holdTimer = setTimeout(() => {
+      if (tapFocus && !collapsing) triggerCollapse();
+    }, 400);
+  }
+
+  function onPointerUp(e) {
+    clearTimeout(holdTimer);
+    // Quick tap also collapses if focused enough
+    if (tapFocus && !collapsing && focusLevel > 0.4) {
+      triggerCollapse();
+    } else {
+      tapFocus = false;
+    }
+  }
+
+  function triggerCollapse() {
     if (collapsing) return;
     collapsing = true;
+    tapFocus = false;
     hint.style.color = 'rgba(240,204,136,0)';
     if (navigator.vibrate) navigator.vibrate(30);
     initAudio();
-    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(()=>{});
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
     playCollapseSignature();
     document.getElementById('s-landing').removeEventListener('click', onTap);
-    document.getElementById('s-landing').removeEventListener('touchend', onTap);
+    document.getElementById('s-landing').removeEventListener('touchend', onPointerUp);
+    document.getElementById('s-landing').removeEventListener('mousedown', onPointerDown);
+    document.getElementById('s-landing').removeEventListener('touchstart', onPointerDown);
   }
+
+  // Simple tap fallback
+  function onTap(e) {
+    if (collapsing) return;
+    tapFocus = true;
+    focusLevel = Math.max(focusLevel, 0.5);
+    setTimeout(() => { if (!collapsing) triggerCollapse(); }, 180);
+  }
+
+  document.getElementById('s-landing').addEventListener('mousedown', onPointerDown);
+  document.getElementById('s-landing').addEventListener('mouseup', onPointerUp);
+  document.getElementById('s-landing').addEventListener('touchstart', e => { e.preventDefault(); onPointerDown(e); }, { passive: false });
+  document.getElementById('s-landing').addEventListener('touchend', e => { e.preventDefault(); onPointerUp(e); });
   document.getElementById('s-landing').addEventListener('click', onTap);
-  document.getElementById('s-landing').addEventListener('touchend', e => { e.preventDefault(); onTap(e); });
 }
 
 function buildWelcome() {
