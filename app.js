@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════
 // FIELD — Unified App v3.1
-// Observe · Collapse · Decohere
+// Observe · Collapse · Witness
 //
 // FIXES & IMPROVEMENTS v3.1:
 // [UX1]  Back button always visible during Observer (never hidden in countdown)
@@ -45,7 +45,7 @@ let affirmBonus = 0;
 let microToneTimer = null;
 let motionCheckInterval = null;
 
-// Decohere state
+// Witness state
 let decStateName = '', decStateNameES = '';
 let decBodySpot = 'chest';
 let collapseBodySpot = 'chest';
@@ -628,7 +628,7 @@ function loop() {
         else observeParticle.draw();
       }
     }
-    if ((currentMode === 'collapse' || currentMode === 'home' || currentMode === 'decohere') && spParticles.length) {
+    if ((currentMode === 'collapse' || currentMode === 'home' || currentMode === 'witness') && spParticles.length) {
       spParticles.forEach(p => { p.update(); p.draw(); });
     }
     if (breathOrb && currentMode === 'collapse') {
@@ -1049,10 +1049,10 @@ function applyLang() {
   document.getElementById('homeFieldSub').textContent = t.fieldSub;
   document.getElementById('mvObserveLabel').textContent = t.observeLabel;
   document.getElementById('mvCollapseLabel').textContent = t.collapseLabel;
-  document.getElementById('mvDecohereLabel').textContent = t.decohere_label;
+  document.getElementById('mvWitnessLabel').textContent = t.decohere_label;
   document.getElementById('mvObserveHint').textContent = t.observeHint;
   document.getElementById('mvCollapseHint').textContent = t.collapseHint;
-  document.getElementById('mvDecohereHint').textContent = t.decohereHint;
+  document.getElementById('mvWitnessHint').textContent = t.decohereHint;
   document.getElementById('retBtn').textContent = t.retBtn;
   document.getElementById('decRetBtn').textContent = t.decRetBtn;
   document.getElementById('decAgainBtn').textContent = t.decAgainBtn;
@@ -1099,7 +1099,7 @@ function clearGhosts() {
 }
 function goHome() {
   closeSettings();
-  const cameFromDecohere = currentMode === 'decohere-end' || currentMode === 'decohere';
+  const cameFromDecohere = currentMode === 'witness-end' || currentMode === 'witness';
   currentMode = 'home';
   clearAllBreath(); clearObserver(); clearAllDec();
   clearGhosts();
@@ -1183,15 +1183,15 @@ function goHome() {
   }
   setTimeout(() => {
     const obs = parseInt(localStorage.getItem('field_obs')||'0');
-    const dec = parseInt(localStorage.getItem('field_obs_decohere')||'0');
+    const dec = parseInt(localStorage.getItem('field_obs_witness')||'0');
     const obv = parseInt(localStorage.getItem('field_obs_observe')||'0');
     const max = Math.max(obs, dec, obv);
     if (max === 0) return;
-    const mvId = max === obs ? 'mv-collapse' : max === dec ? 'mv-decohere' : 'mv-observe';
+    const mvId = max === obs ? 'mv-collapse' : max === dec ? 'mv-witness' : 'mv-observe';
     const el = document.getElementById(mvId);
     if (el) el.classList.add('lit');
     if (cameFromDecohere) {
-      const decEl = document.getElementById('mv-decohere');
+      const decEl = document.getElementById('mv-witness');
       if (decEl) {
         decEl.classList.add('just-released');
         setTimeout(() => { if (decEl) decEl.classList.remove('just-released'); }, 180000);
@@ -1303,8 +1303,20 @@ function buildObsScreen() {
     const stormLink = document.createElement('div');
     stormLink.style.cssText = 'margin-top:24px;font-size:clamp(11px,2.8vw,13px);letter-spacing:.18em;color:rgba(240,204,136,.58);cursor:pointer;padding:8px 0;';
     stormLink.textContent = lang === 'en' ? 'enter storm' : 'entrar tormenta';
-    stormLink.addEventListener('click', () => { if(audioCtx) playTap(); clearObserver(); startStormScreen(); });
-    stormLink.addEventListener('touchend', e => { e.preventDefault(); if(audioCtx) playTap(); clearObserver(); startStormScreen(); });
+    stormLink.addEventListener('click', () => {
+      if(audioCtx) playTap();
+      // Fade observe screen first to prevent flash
+      const obsScr = document.getElementById('s-observe');
+      if (obsScr) { obsScr.style.transition = 'opacity 0.3s ease'; obsScr.style.opacity = '0'; }
+      setTimeout(() => { clearObserver(); startStormScreen(); }, 280);
+    });
+    stormLink.addEventListener('touchend', e => {
+      e.preventDefault();
+      if(audioCtx) playTap();
+      const obsScr = document.getElementById('s-observe');
+      if (obsScr) { obsScr.style.transition = 'opacity 0.3s ease'; obsScr.style.opacity = '0'; }
+      setTimeout(() => { clearObserver(); startStormScreen(); }, 280);
+    });
 
     // Voice noting button — only if Web Speech API available
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
@@ -1645,7 +1657,17 @@ function setObsTime(mins) {
 
 function enterObserve() {
   initAudio();
-  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(()=>{});
+  if (audioCtx && audioCtx.state === 'suspended') {
+    audioCtx.resume().then(() => {
+      // Pre-warm audio on noting entry with a silent pulse so first tap has no delay
+      if (obsMode === 'noting' && audioCtx) {
+        const g = audioCtx.createGain();
+        g.gain.setValueAtTime(0, audioCtx.currentTime);
+        g.connect(audioCtx.destination);
+        setTimeout(() => { try { g.disconnect(); } catch(e) {} }, 100);
+      }
+    }).catch(()=>{});
+  }
   fadeDrone(true, 1); spParticles = [];
   // [UX1] Back button always visible — set immediately and never removed
   showBackBtn();
@@ -2055,6 +2077,7 @@ function chooseNoteTone(key, el) {
   else if (key === 'unpleasant') playToneUnpleasant();
   else playToneNeutral();
   pulseStormWord(noteSense + ' · ' + key);
+  if (obsStorm && currentMode === 'storm') addStormNoteLog(noteSense, key);
   setTimeout(() => {
     document.querySelectorAll('#senseRow .sense-chip').forEach(x => x.classList.remove('active'));
     document.querySelectorAll('#toneRow .tone-chip').forEach(x => x.classList.remove('active'));
@@ -2067,6 +2090,33 @@ function chooseNoteTone(key, el) {
     }
   }, 420);
 }
+let stormNoteLog = [];
+function addStormNoteLog(sense, tone) {
+  const log = document.getElementById('storm-note-log');
+  if (!log) return;
+  const entry = sense + ' · ' + tone;
+  stormNoteLog.push(entry);
+  if (stormNoteLog.length > 5) stormNoteLog.shift();
+  // Rebuild display
+  log.innerHTML = '';
+  stormNoteLog.forEach((text, i) => {
+    const el = document.createElement('div');
+    const age = stormNoteLog.length - 1 - i; // 0 = newest
+    const opacity = (0.85 - age * 0.14).toFixed(2);
+    const size = age === 0 ? 'clamp(14px,3.8vw,18px)' : 'clamp(11px,3vw,14px)';
+    el.style.cssText = `font-size:${size};letter-spacing:.14em;font-weight:300;
+      font-family:'Plus Jakarta Sans',sans-serif;color:rgba(240,204,136,${opacity});
+      text-align:center;transition:opacity 0.3s ease;white-space:nowrap;`;
+    el.textContent = text;
+    log.appendChild(el);
+    // Newest flashes in
+    if (age === 0) {
+      el.style.opacity = '0';
+      requestAnimationFrame(() => { el.style.transition = 'opacity 0.25s ease'; el.style.opacity = '1'; });
+    }
+  });
+}
+
 function startNotingStorm() {
   clearStormTimer();
   if (!obsStorm) return;
@@ -2537,6 +2587,7 @@ function startStormScreen() {
     if (spParticles.length === 0) initSpParticles(10);
     spParticles.forEach(p => { p.targetAlpha = 0.12 + Math.random()*0.1; p.targetClarity = 0; p._flickering = false; });
     initStormWords();
+    playStormAmbient();
 
     // [UX4] Auto-exit after 3 minutes
     if (stormAutoExitTimer) clearTimeout(stormAutoExitTimer);
@@ -2550,6 +2601,13 @@ function startStormScreen() {
 
 function exitStormScreen() {
   stopStormWords();
+  stopStormAmbient();
+  stormNoteLog = [];
+  const log = document.getElementById('storm-note-log');
+  if (log) log.innerHTML = '';
+  // Restore observe screen opacity if we came from noting
+  const obsScr = document.getElementById('s-observe');
+  if (obsScr) { obsScr.style.transition = 'opacity 0.4s ease'; obsScr.style.opacity = '1'; }
   bgDimTarget = 1;
   if (stormAutoExitTimer) { clearTimeout(stormAutoExitTimer); stormAutoExitTimer = null; }
   currentMode = 'observe';
@@ -2566,12 +2624,13 @@ function initStormWords() {
   const spawnNext = () => {
     if (currentMode !== 'storm') return;
     spawnStormWord();
-    const next = 4000 + Math.random() * 4000; // much slower — contemplative pace
+    const next = 1500 + Math.random() * 1500; // fast — overwhelming pace
     stormScreenTimer = setTimeout(spawnNext, next);
   };
-  // Seed with one word, breathe before the storm builds
+  // Seed with two words immediately
   spawnStormWord();
-  stormScreenTimer = setTimeout(spawnNext, 3500);
+  setTimeout(() => spawnStormWord(), 400);
+  stormScreenTimer = setTimeout(spawnNext, 1200);
 
   const animateStorm = () => {
     if (currentMode !== 'storm') return;
@@ -2655,10 +2714,47 @@ function spawnStormWord() {
     targetAlpha: maxAlpha,
     phase: Math.random() * Math.PI * 2,
     born: Date.now(),
-    holdMs: 5000 + Math.random() * 5000,  // linger 5–10s
+    holdMs: 2500 + Math.random() * 2000,  // 2.5–4.5s — readable but not lingering
     fading: false
   };
   stormActiveWords.push(wordObj);
+}
+
+let stormAmbientNodes = [];
+function playStormAmbient() {
+  if (!audioCtx || stormAmbientNodes.length) return;
+  // Low irregular rumble — 3 detuned oscillators with slow LFO modulation
+  const freqs = [48, 72, 96];
+  freqs.forEach((f, i) => {
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    const lfo = audioCtx.createOscillator();
+    const lfoGain = audioCtx.createGain();
+    o.type = 'sawtooth';
+    o.frequency.value = f + (Math.random() - 0.5) * 8;
+    lfo.type = 'sine';
+    lfo.frequency.value = 0.08 + i * 0.03; // very slow wobble
+    lfoGain.gain.value = f * 0.15;
+    lfo.connect(lfoGain);
+    lfoGain.connect(o.frequency);
+    g.gain.setValueAtTime(0, audioCtx.currentTime);
+    g.gain.linearRampToValueAtTime(0.018 - i * 0.004, audioCtx.currentTime + 2);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(); lfo.start();
+    stormAmbientNodes.push({ o, g, lfo });
+  });
+}
+function stopStormAmbient() {
+  stormAmbientNodes.forEach(({ o, g, lfo }) => {
+    try {
+      const now = audioCtx.currentTime;
+      g.gain.cancelScheduledValues(now);
+      g.gain.setValueAtTime(g.gain.value, now);
+      g.gain.linearRampToValueAtTime(0, now + 1.5);
+      setTimeout(() => { try { o.stop(); lfo.stop(); } catch(e) {} }, 1800);
+    } catch(e) {}
+  });
+  stormAmbientNodes = [];
 }
 
 function stopStormWords() {
@@ -2698,10 +2794,10 @@ function startDecohere() {
   initAudio();
   if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(()=>{});
   playDecohereSignature();
-  currentMode = 'decohere'; showBackBtn();
+  currentMode = 'witness'; showBackBtn();
   document.getElementById('backBtn').onclick = () => goHome();
   clearGhosts();
-  // Violet colour temperature for Decohere movement
+  // Violet colour temperature for Witness movement
   applyDecoherePalette();
   fadeDrone(true, 1.5); spParticles = [];
   setTimeout(() => {
@@ -2715,13 +2811,13 @@ function startDecohere() {
   buildShadowGrid();
   const t = TRANSLATIONS[lang];
   // Restore default padding/gap for shadow grid view
-  const scr = document.getElementById('s-decohere');
+  const scr = document.getElementById('s-witness');
   if (scr) { scr.style.paddingTop = ''; scr.style.gap = ''; }
   const arrLine = document.getElementById('decArrivalLine');
   const arrSub  = document.getElementById('decArrivalSub');
   arrLine.textContent = t.decArrivalLine; arrLine.style.opacity = '1';
   arrSub.textContent  = t.decArrivalSub;  arrSub.style.opacity  = '1';
-  showScreen('s-decohere');
+  showScreen('s-witness');
 }
 
 function buildShadowGrid() {
@@ -2741,13 +2837,13 @@ function buildShadowGrid() {
 
 // ══════════════════════════════════════
 // SHARED BODY MAP — used by both Decohere and Collapse
-// mode: 'decohere' | 'collapse'
-// payload: shadow state name (decohere) | state object (collapse)
+// mode: 'witness' | 'collapse'
+// payload: shadow state name (witness) | state object (collapse)
 // ══════════════════════════════════════
 function showBodyMap(mode, payload) {
-  // For decohere: replace shadow grid in s-decohere
+  // For witness: replace shadow grid in s-decohere
   // For collapse: show s-bodymap screen
-  const isDecohere = mode === 'decohere';
+  const isDecohere = mode === 'witness';
 
   const BODY_PTS = [
     // Head — filled oval, not a ring
@@ -2811,7 +2907,7 @@ function showBodyMap(mode, payload) {
   const ptGlowColor  = isDecohere ? 'rgba(210,185,235,' : 'rgba(240,204,136,';
 
   const question = isDecohere
-    ? (lang === 'en' ? 'Where do you feel it most?' : '¿Dónde lo sientes más?')
+    ? (lang === 'en' ? 'Where does it live in you?' : '¿Dónde vive en ti?')
     : (lang === 'en' ? 'Where does it want to land?' : '¿Dónde quiere aterrizar?');
 
   // Build DOM into the right container
@@ -2823,7 +2919,7 @@ function showBodyMap(mode, payload) {
     if (line) { line.style.transition = 'opacity 0.5s ease'; line.style.opacity = '0'; }
     if (sub)  { sub.style.transition  = 'opacity 0.5s ease'; sub.style.opacity  = '0'; }
     // Remove padding constraints — full screen figure
-    const scr = document.getElementById('s-decohere');
+    const scr = document.getElementById('s-witness');
     if (scr) { scr.style.paddingTop = '0'; scr.style.gap = '0'; }
     grid.innerHTML = '<div id="bodymapWrap" style="position:fixed;inset:0;"></div>';
     wrap = document.getElementById('bodymapWrap');
@@ -2969,7 +3065,7 @@ function showBodyMap(mode, payload) {
     wrap.appendChild(echoEl);
 
     function drawFigure() {
-      if (currentMode !== 'decohere') { cancelAnimationFrame(figRafId); return; }
+      if (currentMode !== 'witness') { cancelAnimationFrame(figRafId); return; }
       fx.clearRect(0, 0, W, H);
       glowPhase += 0.025;
 
@@ -3174,7 +3270,7 @@ function showBodyMap(mode, payload) {
 
 function showDecBodyMap() {
   // Legacy wrapper — routes to shared showBodyMap
-  showBodyMap('decohere', null);
+  showBodyMap('witness', null);
 }
 
 // PHASE 1: Acknowledgment — word fades in alone in silence, then breath begins
@@ -3433,10 +3529,10 @@ function startDecBreath(displayName) {
 
 // PHASE 3: End
 function showDecEnd() {
-  currentMode = 'decohere-end';
+  currentMode = 'witness-end';
   const t = TRANSLATIONS[lang];
-  const nd = parseInt(localStorage.getItem('field_obs_decohere')||'0') + 1;
-  localStorage.setItem('field_obs_decohere', nd);
+  const nd = parseInt(localStorage.getItem('field_obs_witness')||'0') + 1;
+  localStorage.setItem('field_obs_witness', nd);
 
   spParticles = Array.from({length:12}, (_,i) => new SpParticle(i,12));
   spParticles.forEach(p => {
@@ -3768,7 +3864,7 @@ function applyCircadianPalette() {
 applyLang();
 applyCircadianPalette();
 
-// Decohere violet palette — applied on entry, restored on exit
+// Witness violet palette — applied on entry, restored on exit
 function applyDecoherePalette() {
   const root = document.documentElement.style;
   root.setProperty('--gold',       '#9880b8'); // soft violet

@@ -351,6 +351,9 @@ html,body { margin:0;padding:0;width:100%;height:100%;background:var(--bg);
 #s-still{gap:30px;}
 #s-storm{overflow:hidden;cursor:default;}
 #storm-words-layer{position:absolute;inset:0;pointer-events:none;}
+#storm-note-log{position:fixed;bottom:clamp(80px,16vh,120px);left:50%;transform:translateX(-50%);
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+  pointer-events:none;z-index:20;width:90vw;max-width:320px;}
 .sw-word{position:absolute;font-family:inherit;font-weight:300;letter-spacing:.18em;
   color:rgba(240,204,136,0);pointer-events:none;transition:none;white-space:nowrap;
   text-transform:lowercase;}
@@ -366,8 +369,8 @@ html,body { margin:0;padding:0;width:100%;height:100%;background:var(--bg);
   -webkit-tap-highlight-color:transparent;transition:color .4s ease;font-weight:300;}
 .still-back:hover{color:var(--gold);}
 
-/* DECOHERE */
-#s-decohere{gap:20px;text-align:center;padding-top:clamp(72px,18vw,96px);}
+/* WITNESS */
+#s-witness{gap:20px;text-align:center;padding-top:clamp(72px,18vw,96px);}
 .dec-line{font-size:var(--fh);color:var(--cream-dim);line-height:1.55;max-width:300px;font-weight:300;}
 .dec-sub{font-size:var(--fs);color:var(--cream-ghost);letter-spacing:.04em;}
 .shadow-grid{display:grid;grid-template-columns:1fr 1fr;
@@ -387,7 +390,7 @@ html,body { margin:0;padding:0;width:100%;height:100%;background:var(--bg);
   0%,100%{transform:translateY(0);opacity:0.72;}
   50%{transform:translateY(-3px);opacity:0.92;}}
 
-/* Decohere breath */
+/* Witness breath */
 #s-dec-breath{gap:0;text-align:center;cursor:default;overflow:hidden;}
 #dec-btext{position:relative;
   font-size:var(--fh);font-weight:300;letter-spacing:.10em;
@@ -424,7 +427,7 @@ html,body { margin:0;padding:0;width:100%;height:100%;background:var(--bg);
   padding:clamp(24px,6vw,48px);padding-top:calc(56px + clamp(24px,6vw,48px));
   text-align:center;opacity:0;transition:opacity 1s ease;pointer-events:none;z-index:13;gap:clamp(20px,5vh,40px);}
 
-/* Decohere end */
+/* Witness end */
 #s-dec-end{gap:36px;text-align:center;}
 /* AE1: dec-end-line breathing glow via class */
 .dec-end-line{font-size:clamp(18px,4.5vw,24px);color:rgba(240,230,208,.50);line-height:1.6;
@@ -692,10 +695,10 @@ body.fs-large .imag-prompt{font-size:clamp(18px,4.8vw,24px);}
       <div class="mv-label" id="mvCollapseLabel"></div>
       <div class="mv-hint" id="mvCollapseHint"></div>
     </div>
-    <div class="movement" id="mv-decohere" onclick="startDecohere()">
+    <div class="movement" id="mv-witness" onclick="startDecohere()">
       <div class="mv-glyph">◯</div>
-      <div class="mv-label" id="mvDecohereLabel"></div>
-      <div class="mv-hint" id="mvDecohereHint"></div>
+      <div class="mv-label" id="mvWitnessLabel"></div>
+      <div class="mv-hint" id="mvWitnessHint"></div>
     </div>
   </div>
   <div class="obs-count-home" id="homeCount"></div>
@@ -789,10 +792,11 @@ body.fs-large .imag-prompt{font-size:clamp(18px,4.8vw,24px);}
 
 <div class="screen" id="s-storm">
   <div id="storm-words-layer"></div>
+  <div id="storm-note-log"></div>
 </div>
 
 <div class="screen" id="s-bodymap" style="display:flex;flex-direction:column;align-items:center;"></div>
-<div class="screen" id="s-decohere">
+<div class="screen" id="s-witness">
   <div class="dec-line" id="decArrivalLine"></div>
   <div class="dec-sub" id="decArrivalSub"></div>
   <div class="shadow-grid" id="shadowGrid"></div>
