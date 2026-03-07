@@ -2348,7 +2348,7 @@ function startBreath() {
   // Create BreathOrb at chosen particle position, moves to centre
   breathOrb = new BreathOrb(startX, startY);
   breathOrb.targetX = innerWidth * 0.5;
-  breathOrb.targetY = innerHeight * 0.5;
+  breathOrb.targetY = innerHeight * 0.57;
   breathOrb.wordText = stateName;
   breathOrb.wordTargetAlpha = 0; // starts hidden, revealed on first inhale
 
@@ -2701,9 +2701,17 @@ function showBodyMap(mode, payload) {
   const isDecohere = mode === 'decohere';
 
   const BODY_PTS = [
+    // Head — filled oval, not a ring
     ...(() => {
-      const pts = []; const cx=0.5, cy=0.09, rr=0.072;
-      for(let a=0;a<Math.PI*2;a+=Math.PI/8) pts.push([cx+Math.cos(a)*rr, cy+Math.sin(a)*rr*1.1, 1.2, 6]);
+      const pts = []; const cx=0.5, cy=0.09, rw=0.065, rh=0.075;
+      // Fill oval with grid of points
+      for(let dy=-rh; dy<=rh; dy+=rh*0.42) {
+        for(let dx=-rw; dx<=rw; dx+=rw*0.38) {
+          if((dx*dx)/(rw*rw)+(dy*dy)/(rh*rh) <= 1) {
+            pts.push([cx+dx, cy+dy, 1.1, 5]);
+          }
+        }
+      }
       return pts;
     })(),
     [0.5, 0.165, 1, 5],
@@ -2985,12 +2993,13 @@ function showBodyMap(mode, payload) {
           oz.connect(gz); gz.connect(audioCtx.destination); oz.start(); oz.stop(audioCtx.currentTime+2.5);
         }
 
-        // Echo: "grief · stomach" — the pairing is the insight
+        // Echo: "grief · stomach" — sits below the figure, never overlaps
         const zoneName = ZONE_LABELS[lang][z.key];
         const shadowName = decStateName || '';
         echoEl.textContent = shadowName ? `${shadowName} · ${zoneName}` : zoneName;
-        const echoY = figY + z.labelY * figH - 24;
-        echoEl.style.top = Math.max(120, Math.min(H - 100, echoY)) + 'px';
+        // Always place below figure with clearance
+        const echoBelowFig = figY + figH + 24;
+        echoEl.style.top = Math.min(echoBelowFig, H - 80) + 'px';
         echoEl.style.opacity = '1';
 
         // Watermark brightens briefly then fades
