@@ -1560,9 +1560,22 @@ function startBreath() {
     }, delayMs||0);
   }
   function hideText(delayMs){ bDelay(()=>{ btext.style.transition='opacity 0.7s ease'; btext.style.opacity='0'; }, delayMs||0); }
-  const p1=t.breathInhale;
-  const p2=t.breathHold;
-  showText(p1,'dim',0); showText(p2,'dim',5000); hideText(10500); bDelay(cycle,11500);
+  // Invitation phrase — before circle moves
+  const inviteLine1 = lang === 'en' ? 'breathe in possibilities' : 'inhala posibilidades';
+  const inviteLine2 = (lang === 'en' ? 'breathe out ' : 'exhala ') + stateName;
+  btext.className = 'btext dim';
+  btext.textContent = inviteLine1;
+  bDelay(() => { btext.style.transition = 'opacity 1.4s ease'; btext.style.opacity = '1'; }, 200);
+  bDelay(() => {
+    btext.style.transition = 'opacity 1s ease'; btext.style.opacity = '0';
+    bDelay(() => {
+      btext.textContent = inviteLine2; btext.className = 'btext gold';
+      btext.style.transition = 'opacity 1.4s ease'; btext.style.opacity = '1';
+    }, 1050);
+  }, 2800);
+  bDelay(() => { btext.style.transition = 'opacity 1.2s ease'; btext.style.opacity = '0'; }, 5500);
+  bDelay(cycle, 7000);
+
   function cycle(){
     if(breathCycle>=3){
       breathRunning=false;
@@ -1570,16 +1583,21 @@ function startBreath() {
       return;
     }
     breathCycle++;
-    showText(t.breathInhale,'',0);
-    bDelay(()=>{ p.className='bp inhaling'; ripple.classList.remove('expand'); void ripple.offsetWidth; },100);
-    showText(t.breathHold,'',4500);
-    bDelay(()=>{ p.className='bp holding'; },4500);
-    showText(stateName,'gold',7300);
-    bDelay(()=>{ p.className='bp exhaling'; ripple.classList.remove('expand'); void ripple.offsetWidth; ripple.classList.add('expand'); playExhaleCollapse(); const cw=document.getElementById('cword'); if(cw) cw.classList.add('exhaling'); },7300);
-    bDelay(()=>{ const cw=document.getElementById('cword'); if(cw) cw.classList.remove('exhaling'); },11800);
-    hideText(11800);
-    bDelay(()=>{ const dot=document.getElementById('bdot'+(breathCycle-1)); if(dot) dot.classList.add('done'); p.className='bp neutral'; },11800);
-    bDelay(cycle,12800);
+    // Circle expands first — silent for 2s
+    bDelay(()=>{ p.className='bp inhaling'; ripple.classList.remove('expand'); void ripple.offsetWidth; }, 80);
+    // Words arrive late into inhale
+    bDelay(()=>{ showText(inviteLine1,'dim',0); }, 2000);
+    // Exhale — circle contracts, state name glows
+    bDelay(()=>{
+      p.className='bp exhaling'; ripple.classList.remove('expand'); void ripple.offsetWidth; ripple.classList.add('expand');
+      playExhaleCollapse();
+      const cw=document.getElementById('cword'); if(cw) cw.classList.add('exhaling');
+    }, 5000);
+    bDelay(()=>{ showText(stateName,'gold',0); }, 5400);
+    bDelay(()=>{ const cw=document.getElementById('cword'); if(cw) cw.classList.remove('exhaling'); }, 9200);
+    hideText(8800);
+    bDelay(()=>{ const dot=document.getElementById('bdot'+(breathCycle-1)); if(dot) dot.classList.add('done'); p.className='bp neutral'; }, 9200);
+    bDelay(cycle, 10400);
   }
 }
 
