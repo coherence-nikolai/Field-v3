@@ -1,8 +1,25 @@
 // ═══════════════════════════════════════
-// FIELD — Unified App v3.0
+// FIELD — Unified App v3.1
 // Observe · Collapse · Decohere
-// Fixes: back button, seen. removed, breath circle encompasses word,
-//        no _orig override pattern, body map viewport safety, settings panel
+//
+// FIXES & IMPROVEMENTS v3.1:
+// [UX1]  Back button always visible during Observer (never hidden in countdown)
+// [UX2]  isTransitioning flag properly set/cleared — no double-fire on rapid taps
+// [UX3]  body-node left position clamped — safe on narrow screens
+// [UX4]  Storm screen gets timed fade-out (3min) + tap-anywhere-to-exit
+// [UX5]  Settings panel swipe-down to close gesture
+// [UX6]  1m duration option hidden for drift/kasina (only noting needs it)
+// [UX7]  Landing canvas resize listener uses { once } / cleanup
+// [AE1]  obsCoherenceWord + dec-end-line get fieldTitleBreathe animation variant
+// [AE2]  Orb hover: brief full-sharp pulse before state collapse
+// [AE3]  shadow-orb base opacity raised to .82
+// [AE4]  dec-witnessed buttons delayed to 12s (was 8s)
+// [AE5]  Crystallised breath glow shifted to deep gold rgba(240,190,60,...)
+// [AE6]  mv-hint opacity raised to .42
+// [AE7]  tapNext/taph pulse speed varies: collapse-intro 1.8s, observe 3.8s, default 2.8s
+// [TECH1] visibilitychange → suspend/resume audioCtx
+// [TECH2] _flickering zeroed on spParticle reset
+// [TECH3] isTransitioning fully wired
 // ═══════════════════════════════════════
 
 // ── STATE ──
@@ -32,7 +49,7 @@ let decStateName = '', decStateNameES = '';
 let decBodySpot = 'chest';
 
 // Observe mode state
-let obsMode = 'drift'; // 'drift' | 'kasina' | 'noting'
+let obsMode = 'drift';
 let obsMinutes = 5;
 let obsTimerEnd = 0;
 let obsTimerInterval = null;
@@ -43,6 +60,9 @@ let obsStorm = false;
 let noteCount = 0;
 let noteSense = '';
 let stormTimer = null;
+
+// Storm screen timeout
+let stormAutoExitTimer = null;
 
 // ── CANVAS ──
 const cv = document.getElementById('cv');
@@ -95,7 +115,7 @@ class SpParticle {
     this.r = 2.2 + Math.random()*1.2;
     this.alpha = 0; this.targetAlpha = 0;
     this.clarity = 0; this.targetClarity = 0;
-    this._flickering = false;
+    this._flickering = false; // [TECH2]
   }
   update() {
     this.ph += this.phV;
@@ -276,6 +296,17 @@ function initAudio() {
   if (audioCtx) return;
   audioCtx = new (window.AudioContext||window.webkitAudioContext)();
 }
+
+// [TECH1] visibilitychange — suspend/resume audio to save battery and prevent ghost audio
+document.addEventListener('visibilitychange', () => {
+  if (!audioCtx) return;
+  if (document.hidden) {
+    audioCtx.suspend().catch(() => {});
+  } else if (audioEnabled) {
+    audioCtx.resume().catch(() => {});
+  }
+});
+
 function playDrone() {
   if (!audioCtx || droneNodes.length) return;
   [432,216,144,108].forEach((f,i) => {
@@ -365,7 +396,6 @@ function playAffirmSound() {
   o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime+1.5);
 }
 function playTonePleasant() {
-  // Ascending — warm, rising two-note chime
   if (!audioCtx) return;
   [[528, 0], [660, 0.22], [792, 0.42]].forEach(([f, delay]) => {
     const o = audioCtx.createOscillator(), g = audioCtx.createGain();
@@ -378,7 +408,6 @@ function playTonePleasant() {
   });
 }
 function playToneUnpleasant() {
-  // Descending — cooler, falling
   if (!audioCtx) return;
   [[440, 0], [330, 0.22], [264, 0.42]].forEach(([f, delay]) => {
     const o = audioCtx.createOscillator(), g = audioCtx.createGain();
@@ -391,7 +420,6 @@ function playToneUnpleasant() {
   });
 }
 function playToneNeutral() {
-  // Single mid tone — still, neither rising nor falling
   if (!audioCtx) return;
   const o = audioCtx.createOscillator(), g = audioCtx.createGain();
   o.type = 'sine'; o.frequency.value = 396;
@@ -426,7 +454,6 @@ function playScatterSound() {
 // ── MOVEMENT AUDIO SIGNATURES ──
 function playObserveSignature() {
   if (!audioCtx) return;
-  // Open, spacious — ascending soft tones, attention settling
   [432, 540, 648].forEach((f, i) => {
     const o = audioCtx.createOscillator(), g = audioCtx.createGain();
     o.type = 'sine'; o.frequency.value = f;
@@ -439,7 +466,6 @@ function playObserveSignature() {
 }
 function playCollapseSignature() {
   if (!audioCtx) return;
-  // Decisive, crystallising — single sharp tone that narrows and holds
   const freqs = [528, 264];
   freqs.forEach((f, i) => {
     const o = audioCtx.createOscillator(), g = audioCtx.createGain();
@@ -453,7 +479,6 @@ function playCollapseSignature() {
 }
 function playDecohereSignature() {
   if (!audioCtx) return;
-  // Lower, dissolving, releasing downward
   [288, 192, 144].forEach((f, i) => {
     const o = audioCtx.createOscillator(), g = audioCtx.createGain();
     o.type = 'sine'; o.frequency.value = f;
@@ -501,7 +526,6 @@ function showScreen(id, postCb) {
       current.classList.remove('active');
       current.style.opacity = '';
       current.style.transition = '';
-      // Small gap then show next — no overlap
       setTimeout(showNext, 40);
     }, 660);
   } else {
@@ -510,25 +534,57 @@ function showScreen(id, postCb) {
 }
 
 // ── SETTINGS PANEL ──
+// [UX5] Swipe-down to close settings panel
+(function initSettingsSwipe() {
+  const panel = document.getElementById('settings-panel');
+  if (!panel) return;
+  let startY = 0, isDragging = false;
+
+  panel.addEventListener('touchstart', e => {
+    startY = e.touches[0].clientY;
+    isDragging = false;
+  }, { passive: true });
+
+  panel.addEventListener('touchmove', e => {
+    const dy = e.touches[0].clientY - startY;
+    if (dy > 8) {
+      isDragging = true;
+      const clampedDy = Math.max(0, dy);
+      panel.style.transition = 'none';
+      panel.style.transform = `translateY(${clampedDy}px)`;
+    }
+  }, { passive: true });
+
+  panel.addEventListener('touchend', e => {
+    const dy = e.changedTouches[0].clientY - startY;
+    panel.style.transition = '';
+    panel.style.transform = '';
+    if (isDragging && dy > 80) {
+      closeSettings();
+    }
+    isDragging = false;
+  });
+})();
+
 function toggleSettings() {
   const panel = document.getElementById('settings-panel');
   if (!panel) return;
-  if (panel.classList.contains('open')) {
-    closeSettings();
-  } else {
-    openSettings();
-  }
+  if (panel.classList.contains('open')) closeSettings();
+  else openSettings();
 }
 function openSettings() {
   const panel = document.getElementById('settings-panel');
   if (!panel) return;
-  // Sync toggle states to current values
   updateSettingsToggles();
   panel.classList.add('open');
+  const backdrop = document.getElementById('settings-backdrop');
+  if (backdrop) backdrop.classList.add('open');
 }
 function closeSettings() {
   const panel = document.getElementById('settings-panel');
   if (panel) panel.classList.remove('open');
+  const backdrop = document.getElementById('settings-backdrop');
+  if (backdrop) backdrop.classList.remove('open');
 }
 function updateSettingsToggles() {
   const audioToggle = document.getElementById('st-audio');
@@ -537,7 +593,6 @@ function updateSettingsToggles() {
   if (audioToggle) audioToggle.classList.toggle('active', audioEnabled);
   if (fontToggle) fontToggle.classList.toggle('active', fontLarge);
   if (langToggle) langToggle.textContent = lang === 'en' ? 'EN' : 'ES';
-  // API key status
   const apiKey = localStorage.getItem('field_api_key') || '';
   const apiInput = document.getElementById('st-api-input');
   const apiStatus = document.getElementById('st-api-status');
@@ -550,12 +605,10 @@ function saveApiKey() {
   const input = document.getElementById('st-api-input');
   if (!input) return;
   const val = input.value.trim();
-  // Don't save the masked placeholder
   if (val && val !== '••••••••••••••••••••••••') {
     localStorage.setItem('field_api_key', val);
   }
   updateSettingsToggles();
-  // Clear the input after save for security
   input.value = '';
   input.placeholder = 'saved';
   setTimeout(() => { input.placeholder = ''; updateSettingsToggles(); }, 1500);
@@ -566,11 +619,8 @@ function clearApiKey() {
 }
 function settingsToggleAudio() {
   audioEnabled = !audioEnabled;
-  if (audioEnabled) {
-    tryDrone();
-  } else {
-    fadeDrone(true, 0.8);
-  }
+  if (audioEnabled) tryDrone();
+  else fadeDrone(true, 0.8);
   updateSettingsToggles();
 }
 function settingsToggleFont() {
@@ -631,17 +681,24 @@ function goHome() {
   clearGhosts();
   fadeDrone(true, 1.5);
   particlesHidden = false; collapseStage = 0; breathRunning = false; bgDimTarget = 1;
+  isTransitioning = false; // [TECH3] reset on return home
   document.querySelectorAll('.cp-stage').forEach(s => { s.classList.remove('on'); s.style.cssText = ''; });
   document.getElementById('backBtn').style.opacity = '0';
   document.getElementById('backBtn').style.pointerEvents = 'none';
   document.querySelectorAll('.al').forEach(a => a.classList.remove('on'));
+  spParticles.forEach(p => { p._flickering = false; }); // [TECH2]
   spParticles = []; particleVisible = false;
+
+  // Clear storm auto-exit timer
+  if (stormAutoExitTimer) { clearTimeout(stormAutoExitTimer); stormAutoExitTimer = null; }
+
   showScreen('s-home', () => {
     document.querySelectorAll('.al').forEach(a => a.classList.add('on'));
     if (cameFromDecohere) {
       setTimeout(() => {
         spParticles = Array.from({length:12}, (_,i) => new SpParticle(i,12));
         spParticles.forEach(p => {
+          p._flickering = false; // [TECH2]
           p.x = innerWidth/2 + (Math.random()-0.5)*30;
           p.y = innerHeight/2 + (Math.random()-0.5)*30;
           p.targetAlpha = 0;
@@ -679,13 +736,16 @@ function goHome() {
 function initSpParticles(n) {
   spParticles = Array.from({length:n}, (_,i) => new SpParticle(i,n));
   const isHome = currentMode === 'home';
-  spParticles.forEach(p => { p.targetAlpha = isHome ? (0.18+Math.random()*0.14) : (0.4+Math.random()*0.3); p.targetClarity = 0; });
+  spParticles.forEach(p => {
+    p._flickering = false; // [TECH2]
+    p.targetAlpha = isHome ? (0.18+Math.random()*0.14) : (0.4+Math.random()*0.3);
+    p.targetClarity = 0;
+  });
 }
 function showBackBtn() {
   const btn = document.getElementById('backBtn');
   btn.style.opacity = '1';
   btn.style.pointerEvents = 'all';
-  // Always reset onclick to goHome — individual flows override as needed
   btn.onclick = () => goHome();
 }
 
@@ -732,7 +792,6 @@ function buildObsScreen() {
   const t = lang === 'en';
   const screen = document.getElementById('s-observe');
 
-  // NOTING mode — completely different UI
   if (obsMode === 'noting') {
     screen.innerHTML = `
       <div class="observe-alt-wrap">
@@ -747,7 +806,6 @@ function buildObsScreen() {
         <div id="noting-progress" style="display:flex;gap:6px;justify-content:center;margin-top:8px;"></div>
       </div>`;
 
-    // Progress dots
     const prog = document.getElementById('noting-progress');
     const target = obsStorm ? 10 : 7;
     for (let i = 0; i < target; i++) {
@@ -776,7 +834,6 @@ function buildObsScreen() {
       toneRow.appendChild(b);
     });
 
-    // Storm mode entry — subtle link at bottom
     const stormLink = document.createElement('div');
     stormLink.style.cssText = 'margin-top:24px;font-size:clamp(11px,2.8vw,13px);letter-spacing:.18em;color:rgba(240,204,136,.25);cursor:pointer;padding:8px 0;';
     stormLink.textContent = lang === 'en' ? 'enter storm' : 'entrar tormenta';
@@ -889,7 +946,7 @@ function updateClarityRing() {
 function startObserve() {
   if (navigator.vibrate) navigator.vibrate(18);
   currentMode = 'observe';
-  showBackBtn();
+  showBackBtn(); // [UX1] shown immediately, before any field activation
   document.getElementById('backBtn').onclick = () => goHome();
   initAudio();
   if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(()=>{});
@@ -982,13 +1039,16 @@ function buildObsSetupScreen() {
   wrap.appendChild(stormWrap);
 
   // ── Duration ──
+  // [UX6] 1m option hidden for drift/kasina modes; only showing for noting
   const timeSection = document.createElement('div');
+  timeSection.id = 'obs-time-section';
   timeSection.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:14px;width:100%;';
   const timeLabel = document.createElement('div');
   timeLabel.style.cssText = 'font-size:clamp(12px,3vw,15px);letter-spacing:.14em;color:rgba(240,230,208,.35);';
   timeLabel.textContent = t ? 'duration' : 'duración';
   timeSection.appendChild(timeLabel);
   const timeRow = document.createElement('div');
+  timeRow.id = 'obs-time-row';
   timeRow.style.cssText = 'display:flex;gap:10px;width:100%;max-width:320px;';
   [1, 5, 10].forEach(m => {
     const b = document.createElement('button');
@@ -998,6 +1058,7 @@ function buildObsSetupScreen() {
       'font-size:clamp(14px,3.5vw,17px);letter-spacing:.06em;cursor:pointer;' +
       '-webkit-tap-highlight-color:transparent;transition:all .3s ease;min-height:64px;';
     b.textContent = m + 'm';
+    if (m === 1) b.dataset.notingOnly = '1';
     b.addEventListener('click', () => setObsTime(m));
     b.addEventListener('touchend', e => { e.preventDefault(); setObsTime(m); });
     timeRow.appendChild(b);
@@ -1022,6 +1083,18 @@ function buildObsSetupScreen() {
   setStormMode(obsStorm);
 }
 
+function updateDurationVisibility() {
+  // [UX6] Show/hide 1m button based on mode
+  const btn1m = document.getElementById('obs-time-1');
+  if (!btn1m) return;
+  const isNoting = obsMode === 'noting';
+  btn1m.style.display = isNoting ? '' : 'none';
+  // If 1m was selected and we're switching away from noting, bump to 5m
+  if (!isNoting && obsMinutes === 1) {
+    setObsTime(5);
+  }
+}
+
 function setObsMode(mode) {
   obsMode = mode;
   const ids = ['drift','kasina','noting'];
@@ -1034,7 +1107,7 @@ function setObsMode(mode) {
   });
   const stormWrap = document.getElementById('stormWrap');
   if (stormWrap) stormWrap.style.display = mode === 'noting' ? 'flex' : 'none';
-  // Swap particle type silently if already in observe
+  updateDurationVisibility(); // [UX6]
   if (currentMode === 'observe') {
     const curAlpha = (observeParticle ? observeParticle.alpha : 0) || (kasinaParticle ? kasinaParticle.alpha : 0);
     if (mode === 'kasina' && !kasinaParticle) {
@@ -1077,7 +1150,7 @@ function enterObserve() {
   initAudio();
   if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(()=>{});
   fadeDrone(true, 1); spParticles = [];
-  // Back button visible immediately — never hidden during observe
+  // [UX1] Back button always visible — set immediately and never removed
   showBackBtn();
   document.getElementById('backBtn').onclick = () => goHome();
   const setup = document.getElementById('obs-setup');
@@ -1095,7 +1168,6 @@ function enterObserve() {
 
     buildObsScreen();
 
-    // Subtle observe drone
     if (audioCtx && !droneNodes.length && currentMode === 'observe') {
       try {
         [180, 360, 270].forEach((f,i) => {
@@ -1114,13 +1186,12 @@ function enterObserve() {
     if (obsMode === 'noting') {
       startObsTimer();
       startNotingStorm();
-      // BUG FIX: ensure back button visible throughout noting session
+      // [UX1] Explicitly keep back button visible for noting sessions
       showBackBtn();
       document.getElementById('backBtn').onclick = () => goHome();
       return;
     }
 
-    // Fade in hint
     setTimeout(() => {
       const hint = document.getElementById('obs-hint-txt');
       if (hint) { hint.style.transition = 'opacity 1.5s ease'; hint.style.opacity = '1'; }
@@ -1137,7 +1208,7 @@ function enterObserve() {
       startMicroTones();
       startMotionCheck();
       startObsTimer();
-      // BUG FIX: explicitly restore back button after field becomes active
+      // [UX1] Re-assert back button after field activation — never hidden during countdown
       showBackBtn();
       document.getElementById('backBtn').onclick = () => goHome();
       const sigs = document.getElementById('obs-signals');
@@ -1155,7 +1226,6 @@ function startObsTimer() {
     if (!fieldActive || isCoherent || currentMode !== 'observe') return;
     const remaining = obsTimerEnd - Date.now();
 
-    // Update timer display — noting uses its own element
     if (obsMode === 'noting') {
       const timerEl = document.getElementById('obs-timer-noting');
       if (timerEl) {
@@ -1164,12 +1234,10 @@ function startObsTimer() {
         const s = secs % 60;
         timerEl.textContent = m + ':' + String(s).padStart(2, '0');
       }
-      // Update progress dots
       for (let i = 0; i < target; i++) {
         const d = document.getElementById('ndot' + i);
         if (d) d.classList.toggle('lit', i < noteCount);
       }
-      // Check coherence
       if (remaining <= 0 || noteCount >= target) {
         clearInterval(obsTimerInterval);
         reachObsCoherence();
@@ -1177,7 +1245,6 @@ function startObsTimer() {
       return;
     }
 
-    // Drift / kasina timer display
     const el = document.getElementById('obs-timer');
     if (el) {
       const secs = Math.max(0, Math.ceil(remaining / 1000));
@@ -1261,13 +1328,11 @@ function reachObsCoherence() {
   clearInterval(motionCheckInterval); clearInterval(obsTimerInterval);
   playObsCoherenceTone(); fadeDrone(true, 3);
 
-  // Fade out whatever UI is showing
   ['obs-signals','meter','scatter-text','obs-hint-txt','obs-timer',
    'obs-timer-noting','noteCounter','senseRow','toneRow','noting-progress','stormWord'].forEach(id => {
     const el = document.getElementById(id);
     if (el) { el.style.transition = 'opacity 1.5s ease'; el.style.opacity = '0'; }
   });
-  // Fade out the whole alt-wrap for noting
   const altWrap = document.querySelector('.observe-alt-wrap');
   if (altWrap) { altWrap.style.transition = 'opacity 1.5s ease'; altWrap.style.opacity = '0'; }
 
@@ -1276,7 +1341,6 @@ function reachObsCoherence() {
   const no = parseInt(localStorage.getItem('field_obs_observe')||'0') + 1;
   localStorage.setItem('field_obs_observe', no);
 
-  // Set coherence screen copy — noting gets different text
   const isNoting = obsMode === 'noting';
   const cohWord = isNoting
     ? (lang === 'en' ? 'A W A R E N E S S' : 'C O N C I E N C I A')
@@ -1323,7 +1387,6 @@ function chooseNoteTone(key, el) {
   if (el) el.classList.add('active');
   const counter = document.getElementById('noteCounter');
   if (counter) counter.textContent = (lang==='en'?'notes':'notas') + ' · ' + noteCount;
-  // Update progress dots immediately
   for (let i = 0; i < target; i++) {
     const d = document.getElementById('ndot' + i);
     if (d) d.classList.toggle('lit', i < noteCount);
@@ -1339,7 +1402,6 @@ function chooseNoteTone(key, el) {
     const toneRow = document.getElementById('toneRow');
     if (toneRow) { toneRow.style.opacity = '.35'; toneRow.style.pointerEvents = 'none'; }
     noteSense = '';
-    // Check if we've hit target
     if (noteCount >= target) {
       clearInterval(obsTimerInterval);
       reachObsCoherence();
@@ -1388,7 +1450,6 @@ document.getElementById('s-observe').addEventListener('click', e => {
 });
 document.getElementById('s-observe').addEventListener('touchend', e => {
   if (e.target.closest('#chrome') || e.target.closest('#affirmBtn') || e.target.closest('#settings-panel')) return;
-  // Never preventDefault on buttons/chips — only on open field taps for scatter
   if (e.target.tagName === 'BUTTON' || e.target.closest('button') || e.target.closest('.sense-chip') || e.target.closest('.tone-chip')) return;
   if (fieldActive && !isCoherent && obsMode === 'drift') {
     e.preventDefault();
@@ -1433,8 +1494,9 @@ function buildInit() {
     if (s.note) { const nt = document.createElement('div'); nt.className = 'sci-note'; nt.innerHTML = s.note; div.appendChild(nt); }
     cont.appendChild(div);
   });
+  // [AE7] Collapse intro tap hint — faster pulse (1.8s) to suggest forward momentum
   const hint = document.createElement('div'); hint.id = 'taph'; hint.textContent = t.tapHint;
-  hint.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);font-size:var(--fl);letter-spacing:.14em;color:rgba(201,169,110,.38);animation:pulse 2.8s ease-in-out infinite;pointer-events:none;z-index:20;white-space:nowrap;font-weight:300;';
+  hint.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);font-size:var(--fl);letter-spacing:.14em;color:rgba(201,169,110,.38);animation:pulseCollapse 1.8s ease-in-out infinite;pointer-events:none;z-index:20;white-space:nowrap;font-weight:300;';
   cont.appendChild(hint);
   updateInitScene();
 }
@@ -1457,6 +1519,7 @@ function updateInitScene() {
 function initScene(scene, chosen) {
   const n = 12;
   if (!spParticles.length) spParticles = Array.from({length:n}, (_,i) => new SpParticle(i,n));
+  // [TECH2] zero _flickering on reset
   switch(scene) {
     case 'sp': spParticles.forEach(p => { p.targetAlpha=0.35+Math.random()*0.3; p.targetClarity=0; p._flickering=false; }); break;
     case 'one': spParticles.forEach((p,i) => { p.targetAlpha=i===0?0.9:0.05; p.targetClarity=i===0?1:0; p._flickering=false; }); if(spParticles[0]){spParticles[0].targetCx=0.5;spParticles[0].targetCy=0.14;} break;
@@ -1486,10 +1549,19 @@ function buildCollapseField() {
     const len = st.name.length;
     const size = len<=5?'clamp(32px,9vw,46px)':len<=7?'clamp(28px,7.5vw,38px)':len<=8?'clamp(24px,6.5vw,32px)':len<=10?'clamp(20px,5.5vw,28px)':'clamp(18px,4.8vw,24px)';
     o.innerHTML = `<div class="oname" style="font-size:${size}">${st.name}</div>`;
+    // [AE2] Orb hover: brief sharp-pulse before collapse
     const go = () => {
-      document.querySelectorAll('.orb').forEach(el => { el.classList.remove('collapsing'); el.classList.add('fading'); });
-      o.classList.remove('fading'); o.classList.add('collapsing');
-      spChosen = idx; setTimeout(() => selectState(st), 320);
+      if (isTransitioning) return; // [TECH3]
+      // Flash the orb to full clarity for 180ms before collapsing
+      o.style.filter = 'blur(0px)';
+      o.style.opacity = '1';
+      o.querySelector('.oname').style.color = 'rgba(255,235,180,1)';
+      o.querySelector('.oname').style.textShadow = '0 0 40px rgba(255,210,80,.75), 0 0 80px rgba(255,190,40,.4)';
+      setTimeout(() => {
+        document.querySelectorAll('.orb').forEach(el => { el.classList.remove('collapsing'); el.classList.add('fading'); });
+        o.classList.remove('fading'); o.classList.add('collapsing');
+        spChosen = idx; setTimeout(() => selectState(st), 320);
+      }, 180);
     };
     o.addEventListener('click', go);
     o.addEventListener('touchend', e => { e.preventDefault(); go(); });
@@ -1500,7 +1572,8 @@ function buildCollapseField() {
   particlesHidden = false; initScene('field');
 }
 function selectState(state) {
-  if (isTransitioning) return;
+  if (isTransitioning) return; // [TECH3]
+  isTransitioning = true; // [TECH3]
   if (navigator.vibrate) navigator.vibrate(38);
   initAudio(); if(audioCtx.state==='suspended') audioCtx.resume();
   playCollapseSound();
@@ -1535,6 +1608,7 @@ function selectState(state) {
   particlesHidden = false;
   fadeDrone(true, 1.5);
   showScreen('s-collapse', () => {
+    isTransitioning = false; // [TECH3] clear after transition completes
     setTimeout(() => {
       const gh = document.getElementById('ghosts');
       gh.style.transition = 'none'; gh.style.opacity = '0';
@@ -1555,6 +1629,7 @@ function buildGhosts(chosen) {
   });
 }
 function showCollapseStage(n) {
+  if (isTransitioning) return; // [TECH3]
   if (n === 3) n = 4;
   if (n === 5) n = 6;
   const current = document.querySelector('.cp-stage.on');
@@ -1587,18 +1662,24 @@ function showCollapseStage(n) {
     if (n===4) startBreath();
   };
   if (current) {
+    isTransitioning = true; // [TECH3]
     current.style.transition = 'opacity 0.7s ease'; current.style.opacity = '0'; current.style.pointerEvents = 'none';
-    setTimeout(() => { current.classList.remove('on'); current.style.cssText='opacity:0;visibility:hidden;display:none;'; reveal(); }, 750);
+    setTimeout(() => {
+      current.classList.remove('on'); current.style.cssText='opacity:0;visibility:hidden;display:none;';
+      isTransitioning = false; // [TECH3]
+      reveal();
+    }, 750);
   } else reveal();
 }
 document.getElementById('s-collapse').addEventListener('click', e => {
   if (e.target.id==='retBtn'||e.target.classList.contains('return-btn')) return;
   if (e.target.closest('#chrome') || e.target.closest('#settings-panel')) return;
   if (collapseStage===4 && breathRunning) return;
+  if (isTransitioning) return; // [TECH3]
   if (collapseStage<6) showCollapseStage(collapseStage+1);
 });
 document.getElementById('retBtn').addEventListener('click', () => {
-  clearAllBreath(); particlesHidden = false; collapseStage = 0;
+  clearAllBreath(); particlesHidden = false; collapseStage = 0; isTransitioning = false;
   document.querySelectorAll('.cp-stage').forEach(s => { s.classList.remove('on'); s.style.cssText=''; });
   document.getElementById('ghosts').style.opacity = '0';
   setTimeout(() => { document.getElementById('ghosts').innerHTML=''; }, 900);
@@ -1620,26 +1701,21 @@ function startBreath() {
   ripple.classList.remove('expand');
   [0,1,2].forEach(i=>{ const d=document.getElementById('bdot'+i); if(d) d.classList.remove('done'); });
 
-  // ── Particle migration: chosen sp flies to breath circle centre ──
   const chosen = spParticles[spChosen % Math.max(spParticles.length, 1)];
   if (chosen) {
-    // Fade all others out quickly
     spParticles.forEach((sp, i) => {
       if (i !== spChosen % spParticles.length) sp.targetAlpha = 0;
     });
-    // Animate chosen toward screen centre (where #bp lives)
     chosen.targetCx = 0.5;
     chosen.targetCy = 0.5;
-    chosen.phV = 0; // stop orbital drift
+    chosen.phV = 0;
     chosen.driftR = 0;
-    // After particle reaches centre (~1.8s), cross-fade into bp
     bDelay(() => {
       chosen.targetAlpha = 0;
       p.style.transition = 'opacity 1.2s ease';
       p.style.opacity = '1';
     }, 1800);
   } else {
-    // No particle — just show bp directly
     p.style.transition = 'opacity 1s ease';
     p.style.opacity = '1';
   }
@@ -1657,7 +1733,6 @@ function startBreath() {
     }, delayMs||0);
   }
   function hideText(delayMs){ bDelay(()=>{ btext.style.transition='opacity 0.7s ease'; btext.style.opacity='0'; }, delayMs||0); }
-  // Invitation phrase — before circle moves
   const inviteLine1 = lang === 'en' ? 'breathe in possibilities' : 'inhala posibilidades';
   const inviteLine2 = (lang === 'en' ? 'breathe out ' : 'exhala ') + stateName;
   btext.className = 'btext dim';
@@ -1676,15 +1751,19 @@ function startBreath() {
   function cycle(){
     if(breathCycle>=3){
       breathRunning=false;
-      bDelay(()=>{ btext.style.transition='opacity 0.9s ease'; btext.style.opacity='0'; p.className='bp crystallised'; initScene('state_chosen', spChosen); const tapEl=document.getElementById('tapNext'); bDelay(()=>{ tapEl.style.transition='opacity 0.8s ease'; tapEl.style.opacity='1'; },1800); },700);
+      bDelay(()=>{
+        btext.style.transition='opacity 0.9s ease'; btext.style.opacity='0';
+        // [AE5] Crystallised glow uses deep gold not warm-white
+        p.className='bp crystallised';
+        initScene('state_chosen', spChosen);
+        const tapEl=document.getElementById('tapNext');
+        bDelay(()=>{ tapEl.style.transition='opacity 0.8s ease'; tapEl.style.opacity='1'; },1800);
+      },700);
       return;
     }
     breathCycle++;
-    // Circle expands first — silent for 2s
     bDelay(()=>{ p.className='bp inhaling'; ripple.classList.remove('expand'); void ripple.offsetWidth; }, 80);
-    // Words arrive late into inhale
     bDelay(()=>{ showText(inviteLine1,'dim',0); }, 2000);
-    // Exhale — circle contracts, state name glows
     bDelay(()=>{
       p.className='bp exhaling'; ripple.classList.remove('expand'); void ripple.offsetWidth; ripple.classList.add('expand');
       playExhaleCollapse();
@@ -1719,19 +1798,36 @@ const DHAMMA_WORDS = {
 
 let stormScreenTimer = null;
 let stormScreenRafId = null;
-let stormActiveWords = []; // {el, x, y, vx, vy, alpha, targetAlpha, size, phase}
+let stormActiveWords = [];
 
 function startStormScreen() {
   currentMode = 'storm';
   showBackBtn();
   document.getElementById('backBtn').onclick = () => exitStormScreen();
+
+  // [UX4] Tap-anywhere-to-exit on storm screen
+  const stormScreen = document.getElementById('s-storm');
+  const stormExitTap = (e) => {
+    if (e.target.closest('#chrome') || e.target.closest('#settings-panel')) return;
+    exitStormScreen();
+    stormScreen.removeEventListener('click', stormExitTap);
+  };
+  // Brief delay before activating so the tap that started storm doesn't immediately exit
+  setTimeout(() => {
+    stormScreen.addEventListener('click', stormExitTap);
+  }, 1200);
+
   showScreen('s-storm', () => {
-    // Background superposition particles for collapse effect
     if (spParticles.length === 0) initSpParticles(10);
-    spParticles.forEach(p => { p.targetAlpha = 0.12 + Math.random()*0.1; p.targetClarity = 0; });
+    spParticles.forEach(p => { p.targetAlpha = 0.12 + Math.random()*0.1; p.targetClarity = 0; p._flickering = false; });
     initStormWords();
+
+    // [UX4] Auto-exit after 3 minutes
+    if (stormAutoExitTimer) clearTimeout(stormAutoExitTimer);
+    stormAutoExitTimer = setTimeout(() => {
+      if (currentMode === 'storm') exitStormScreen();
+    }, 180000);
   });
-  // Dim background, keep particles alive
   bgDimTarget = 0.25;
   fadeDrone(true, 2);
 }
@@ -1739,6 +1835,7 @@ function startStormScreen() {
 function exitStormScreen() {
   stopStormWords();
   bgDimTarget = 1;
+  if (stormAutoExitTimer) { clearTimeout(stormAutoExitTimer); stormAutoExitTimer = null; }
   currentMode = 'observe';
   goHome();
 }
@@ -1750,19 +1847,15 @@ function initStormWords() {
   stormActiveWords = [];
   stopStormWords();
 
-  // Spawn words on interval
-  let spawnDelay = 0;
   const spawnNext = () => {
     if (currentMode !== 'storm') return;
     spawnStormWord();
     const next = 2200 + Math.random() * 1800;
     stormScreenTimer = setTimeout(spawnNext, next);
   };
-  // Seed 2 words immediately, then auto-spawn
   spawnStormWord(); spawnStormWord();
   stormScreenTimer = setTimeout(spawnNext, 2500);
 
-  // Animation loop
   const animateStorm = () => {
     if (currentMode !== 'storm') return;
     stormActiveWords = stormActiveWords.filter(w => {
@@ -1770,17 +1863,14 @@ function initStormWords() {
       w.alpha += (w.targetAlpha - w.alpha) * 0.04;
       w.x += w.vx;
       w.y += w.vy;
-      // Apply drift
       const a = w.alpha.toFixed(3);
       w.el.style.color = `rgba(240,204,136,${a})`;
       w.el.style.left = w.x + 'px';
       w.el.style.top = w.y + 'px';
-      // Fade out if alpha near zero and target is 0
       if (w.targetAlpha === 0 && w.alpha < 0.01) {
         w.el.remove();
         return false;
       }
-      // Auto-fade after hold
       if (!w.fading && Date.now() - w.born > w.holdMs) {
         w.fading = true;
         w.targetAlpha = 0;
@@ -1791,7 +1881,6 @@ function initStormWords() {
   };
   stormScreenRafId = requestAnimationFrame(animateStorm);
 
-  // Occasional background particle collapses
   const collapseLoop = () => {
     if (currentMode !== 'storm') return;
     if (spParticles.length > 0) {
@@ -1819,25 +1908,20 @@ function spawnStormWord() {
   el.textContent = word;
   const sizes = ['clamp(13px,3.5vw,18px)', 'clamp(16px,4.5vw,24px)', 'clamp(11px,2.8vw,15px)'];
   el.style.fontSize = sizes[Math.floor(Math.random() * sizes.length)];
-
-  // Random position avoiding edges
   const margin = 60;
   const x = margin + Math.random() * (innerWidth - margin * 2 - 140);
   const y = margin + Math.random() * (innerHeight - margin * 2 - 40);
-
   el.style.left = x + 'px';
   el.style.top = y + 'px';
   el.style.color = 'rgba(240,204,136,0)';
   layer.appendChild(el);
-
   const speed = 0.08 + Math.random() * 0.12;
   const angle = Math.random() * Math.PI * 2;
   const maxAlpha = 0.25 + Math.random() * 0.45;
-
   const wordObj = {
     el, x, y,
     vx: Math.cos(angle) * speed,
-    vy: Math.sin(angle) * speed - 0.05, // slight upward drift
+    vy: Math.sin(angle) * speed - 0.05,
     alpha: 0,
     targetAlpha: maxAlpha,
     phase: Math.random() * Math.PI * 2,
@@ -1859,23 +1943,19 @@ function stopStormWords() {
   if (layer) layer.innerHTML = '';
 }
 
-// BUG FIX: dynamic body position calculation — safe across all screen sizes
+// Body position calculation — safe across all screen sizes
 function getDecBodyPos(spot) {
   const vh = window.innerHeight;
-  const chromeH = 56; // top chrome
-  const safeBottom = 80; // min distance from bottom
+  const chromeH = 56;
+  const safeBottom = 80;
   const usable = vh - chromeH - safeBottom;
-
-  // Five spots spread across usable height
   const spots = ['head','throat','chest','stomach','pelvis'];
   const idx = spots.indexOf(spot);
-  const fraction = idx / (spots.length - 1); // 0 to 1
-
+  const fraction = idx / (spots.length - 1);
   const wordTopPx = chromeH + 20 + fraction * (usable * 0.35);
   const particleTopPx = wordTopPx + 60;
   const dotsTopPx = Math.min(particleTopPx + 100, vh - safeBottom - 40);
   const textTopPx = Math.min(dotsTopPx + 50, vh - safeBottom);
-
   return {
     wordTop: wordTopPx + 'px',
     particleTop: particleTopPx + 'px',
@@ -1916,7 +1996,6 @@ function buildShadowGrid() {
     o.style.setProperty('--shadow-dur', (3.5+Math.random()*3).toFixed(2)+'s');
     o.style.animationDelay = (-Math.random()*4).toFixed(2)+'s';
     o.textContent = lang==='en' ? name : es[i];
-    // Show body map first
     const go = () => { decStateName=name; decStateNameES=es[i]; showDecBodyMap(); };
     o.addEventListener('click', go);
     o.addEventListener('touchend', e => { e.preventDefault(); go(); });
@@ -1935,7 +2014,6 @@ function showDecBodyMap() {
   grid.innerHTML = '<div class="bodymap-wrap" id="bodymapWrap"></div>';
   const wrap = document.getElementById('bodymapWrap');
 
-  // ── Particle silhouette canvas ──────────────────────────────────────────
   const figDiv = document.createElement('div');
   figDiv.className = 'bodymap-figure';
   const fc = document.createElement('canvas');
@@ -1944,44 +2022,29 @@ function showDecBodyMap() {
   wrap.appendChild(figDiv);
 
   const fx = fc.getContext('2d');
-
-  // Body landmark points (normalised 0-1 in 180×520 space)
-  // Each point: [x, y, r, glowR]
   const W = 180, H = 520;
   const BODY_PTS = [
-    // Head circle
     ...(() => {
       const pts = []; const cx=0.5, cy=0.09, rr=0.072;
       for(let a=0;a<Math.PI*2;a+=Math.PI/8) pts.push([cx+Math.cos(a)*rr, cy+Math.sin(a)*rr*1.1, 1.2, 6]);
       return pts;
     })(),
-    // Neck
     [0.5, 0.165, 1, 5],
-    // Shoulders
     [0.26, 0.215, 1.3, 7], [0.38, 0.20, 1, 5], [0.5, 0.195, 0.9, 4],
     [0.62, 0.20, 1, 5], [0.74, 0.215, 1.3, 7],
-    // Upper arms (left)
     [0.21, 0.28, 1, 5], [0.18, 0.35, 1, 4], [0.16, 0.42, 1, 4],
-    // Upper arms (right)
     [0.79, 0.28, 1, 5], [0.82, 0.35, 1, 4], [0.84, 0.42, 1, 4],
-    // Torso sides
     [0.27, 0.26, 1, 4], [0.25, 0.34, 1, 4], [0.24, 0.42, 1, 4],
     [0.73, 0.26, 1, 4], [0.75, 0.34, 1, 4], [0.76, 0.42, 1, 4],
-    // Chest centre
     [0.5, 0.25, 1, 4], [0.42, 0.28, 0.8, 3], [0.58, 0.28, 0.8, 3],
-    // Waist
     [0.30, 0.50, 1, 4], [0.38, 0.505, 0.8, 3], [0.5, 0.51, 0.9, 4],
     [0.62, 0.505, 0.8, 3], [0.70, 0.50, 1, 4],
-    // Lower arms (left)
     [0.14, 0.50, 1, 4], [0.12, 0.57, 1, 4],
-    // Lower arms (right)
     [0.86, 0.50, 1, 4], [0.88, 0.57, 1, 4],
-    // Hips
     [0.28, 0.595, 1.2, 6], [0.38, 0.60, 1, 4], [0.5, 0.605, 1, 4],
     [0.62, 0.60, 1, 4], [0.72, 0.595, 1.2, 6],
   ];
 
-  // Spot regions (% of canvas height) for glow mapping
   const SPOT_BANDS = {
     head:    [0.00, 0.20],
     throat:  [0.14, 0.26],
@@ -1992,14 +2055,14 @@ function showDecBodyMap() {
 
   let activeSpot = null;
   let glowPhase = 0;
+  let figRafId = null;
 
   function drawFigure() {
+    if (currentMode !== 'decohere') { cancelAnimationFrame(figRafId); return; }
     fx.clearRect(0, 0, W, H);
     glowPhase += 0.03;
-
     BODY_PTS.forEach(([nx, ny, r, gr]) => {
       const px = nx * W, py = ny * H;
-      // Check if point is in active spot band
       let inSpot = false;
       if (activeSpot && SPOT_BANDS[activeSpot]) {
         const [lo, hi] = SPOT_BANDS[activeSpot];
@@ -2009,25 +2072,21 @@ function showDecBodyMap() {
       const alpha = inSpot ? 0.55 + 0.35 * pulse : 0.18 + 0.10 * pulse;
       const glowA = inSpot ? 0.22 * pulse : 0.06 * pulse;
       const glowRad = inSpot ? gr * 1.8 : gr;
-
-      // Glow
       const grad = fx.createRadialGradient(px, py, 0, px, py, glowRad);
       grad.addColorStop(0, `rgba(240,204,136,${glowA.toFixed(3)})`);
       grad.addColorStop(1, 'rgba(240,204,136,0)');
       fx.fillStyle = grad;
       fx.beginPath(); fx.arc(px, py, glowRad, 0, Math.PI*2); fx.fill();
-
-      // Core dot
       fx.globalAlpha = alpha;
       fx.fillStyle = `rgba(240,210,140,1)`;
       fx.beginPath(); fx.arc(px, py, r * (inSpot ? 1.5 : 1), 0, Math.PI*2); fx.fill();
       fx.globalAlpha = 1;
     });
-    requestAnimationFrame(drawFigure);
+    figRafId = requestAnimationFrame(drawFigure);
   }
-  drawFigure();
+  figRafId = requestAnimationFrame(drawFigure);
 
-  // ── Body spot buttons (left side) ──────────────────────────────────────
+  // [UX3] body-node left position clamped — safe on narrow screens
   const BODY_SPOTS = {
     en: [
       {key:'head',    label:'head',    top:9},
@@ -2053,11 +2112,14 @@ function showDecBodyMap() {
     b.style.opacity = '0';
     b.style.transition = 'opacity 0.9s ease, transform 0.9s ease';
     b.style.transform = 'translateX(-50%) translateY(8px)';
+    // [UX3] Use max() to prevent clipping on narrow screens — safe minimum 8px from edge
+    b.style.left = 'max(8px, 22%)';
     b.addEventListener('click', () => {
       decBodySpot = spot.key;
       activeSpot = spot.key;
       document.querySelectorAll('.body-node').forEach(x => x.classList.remove('active'));
       b.classList.add('active');
+      cancelAnimationFrame(figRafId);
       setTimeout(() => startDecAcknowledge(), 280);
     });
     wrap.appendChild(b);
@@ -2065,7 +2127,7 @@ function showDecBodyMap() {
   });
 }
 
-// PHASE 1: Acknowledgment — "seen." REMOVED. Word fades in alone, silence, then breath.
+// PHASE 1: Acknowledgment — word fades in alone in silence, then breath begins
 function startDecAcknowledge() {
   const displayName = lang==='en' ? decStateName : decStateNameES;
 
@@ -2075,12 +2137,10 @@ function startDecAcknowledge() {
   const btext       = document.getElementById('dec-btext');
   const bp          = document.getElementById('dec-bp');
 
-  // Instant reset — no transitions yet
   [ackLayer, breathLayer, wordEl, btext, bp].forEach(el => {
     if (el) { el.style.transition = 'none'; el.style.opacity = '0'; }
   });
 
-  // Build word letter by letter
   wordEl.innerHTML = '';
   displayName.split('').forEach(ch => {
     const span = document.createElement('span');
@@ -2089,7 +2149,6 @@ function startDecAcknowledge() {
     wordEl.appendChild(span);
   });
 
-  // Reset breath dots
   [0,1,2].forEach(i => {
     const d = document.getElementById('dec-dot'+i);
     if (d) d.classList.remove('done');
@@ -2103,26 +2162,20 @@ function startDecAcknowledge() {
 
   showScreen('s-dec-breath', () => {
     requestAnimationFrame(() => requestAnimationFrame(() => {
-      // Re-enable transitions
       wordEl.style.transition = 'color 3s ease, opacity 2s ease';
       ackLayer.style.transition = 'opacity 1s ease';
-
-      // Word fades in — no "seen." label, just the word in silence
       setTimeout(() => {
         wordEl.style.opacity = '1';
         wordEl.style.textShadow = '0 0 36px rgba(240,220,180,.28)';
       }, 100);
-      // Ack layer fades in (contains only the word area now)
       setTimeout(() => { ackLayer.style.opacity = '1'; }, 200);
-
-      // After 5s of silence — begin breath
+      // 5s of silence — then breath begins
       setTimeout(() => startDecBreath(displayName), 5000);
     }));
   });
 }
 
 // PHASE 2: Breath cycles
-// BUG FIX: dec-word is now INSIDE dec-bp-wrap in HTML so the circle truly encompasses it
 function startDecBreath(displayName) {
   bgDimTarget = 0.25;
   const t = TRANSLATIONS[lang];
@@ -2133,17 +2186,13 @@ function startDecBreath(displayName) {
   const bp          = document.getElementById('dec-bp');
   const letters     = Array.from(wordEl.querySelectorAll('span'));
 
-  // Apply body position dynamically — safe on all screen sizes
   const pos = getDecBodyPos(decBodySpot);
   const bpWrap = document.getElementById('dec-bp-wrap');
   const bdots  = document.getElementById('dec-bdots');
   if (bpWrap) bpWrap.style.top = pos.particleTop;
   if (bdots)  bdots.style.top  = pos.dotsTop;
   if (btext)  btext.style.top  = pos.textTop;
-  // Word position — centred inside the bp-wrap (handled by CSS), so move via bp-wrap
-  // The word el is positioned absolute inside bp-wrap, so it follows automatically
 
-  // Per-letter stagger
   letters.forEach((span, i) => {
     const dur  = (1.8 + Math.random()*1.4).toFixed(2);
     const dly  = (Math.random()*0.6).toFixed(2);
@@ -2160,7 +2209,6 @@ function startDecBreath(displayName) {
     backBtn.onclick = () => startDecohere();
   }
 
-  // Cross-fade: ack out, breath in
   ackLayer.style.transition = 'opacity 1.2s ease';
   ackLayer.style.opacity = '0';
   setTimeout(() => { ackLayer.style.pointerEvents = 'none'; }, 1200);
@@ -2226,7 +2274,6 @@ function startDecBreath(displayName) {
         backBtn.onclick = () => goHome();
       }
 
-      // Phase 3a: letter fragmentation
       dDelay(() => {
         hideBtext();
         letters.forEach((span, i) => {
@@ -2240,13 +2287,13 @@ function startDecBreath(displayName) {
         if (bp) {
           bp.style.transition = 'transform 1.2s cubic-bezier(.4,0,.2,1),opacity 1.8s ease,background 1.2s ease,box-shadow 1.2s ease';
           bp.style.transform = 'scale(4)';
-          bp.style.background = 'rgba(240,204,136,.8)';
-          bp.style.boxShadow = '0 0 40px rgba(240,204,136,.6)';
+          // [AE5] deep gold, not warm-white
+          bp.style.background = 'rgba(240,190,60,.85)';
+          bp.style.boxShadow = '0 0 40px rgba(240,190,60,.7)';
         }
         playDecohereRelease();
       }, 400);
 
-      // Phase 3b: bp contracts
       dDelay(() => {
         if (bp) {
           bp.style.transition = 'transform 3s cubic-bezier(.4,0,.2,1),opacity 3s ease,background 3s ease,box-shadow 3s ease';
@@ -2302,11 +2349,11 @@ function startDecBreath(displayName) {
         'box-shadow 3s ease';
       bp.style.transform = 'scale(1)';
       bp.style.filter = 'blur(0px)';
-      const residR = 180 + cycle * 12, residG = 170 + cycle * 8, residB = 155 - cycle * 8;
-      bp.style.background = `rgba(${residR},${residG},${residB},${0.45 + cycle*0.1})`;
-      bp.style.boxShadow = `0 0 ${10+cycle*6}px rgba(${residR},${residG},${residB},${0.2+cycle*0.08})`;
+      // [AE5] exhale residual — warm gold tones
+      const residR = 200 + cycle * 12, residG = 175 + cycle * 6, residB = 80 - cycle * 8;
+      bp.style.background = `rgba(${residR},${Math.min(255,residG)},${Math.max(0,residB)},${0.45 + cycle*0.1})`;
+      bp.style.boxShadow = `0 0 ${10+cycle*6}px rgba(${residR},${Math.min(255,residG)},${Math.max(0,residB)},${0.2+cycle*0.08})`;
 
-      // Word dissolves progressively — opacity steps down each cycle
       const wordOpacity = Math.max(0, 1 - cycle * 0.36);
       const wR = 180 + cycle*50, wG = 175 + cycle*35, wB = 165 + cycle*15;
       letters.forEach(span => {
@@ -2337,6 +2384,7 @@ function showDecEnd() {
 
   spParticles = Array.from({length:12}, (_,i) => new SpParticle(i,12));
   spParticles.forEach(p => {
+    p._flickering = false; // [TECH2]
     p.x = innerWidth/2 + (Math.random()-0.5)*20;
     p.y = innerHeight/2 + (Math.random()-0.5)*20;
     p.targetAlpha = 0;
@@ -2361,13 +2409,17 @@ function showDecEnd() {
   const btns = document.querySelector('.dec-btns');
   if (btns) { btns.style.opacity='0'; btns.style.transition='opacity 1.4s ease'; btns.style.pointerEvents='none'; }
 
-  // Back button → home on end screen
   const backBtn = document.getElementById('backBtn');
   if (backBtn) { backBtn.onclick = () => goHome(); }
 
   showScreen('s-dec-end', () => {
+    // [AE1] decEndLine gets breathing animation — applied via class
+    const endLine = document.getElementById('decEndLine');
+    if (endLine) endLine.classList.add('breathing-glow');
+
     setTimeout(() => { if (witnessed) witnessed.style.opacity = '1'; }, 1500);
-    setTimeout(() => { if (btns) { btns.style.opacity='1'; btns.style.pointerEvents='all'; } }, 8000);
+    // [AE4] Witnessed sentence breathes for longer — buttons at 12s (was 8s)
+    setTimeout(() => { if (btns) { btns.style.opacity='1'; btns.style.pointerEvents='all'; } }, 12000);
   });
 }
 
@@ -2379,7 +2431,6 @@ const WLC_TOTAL = 3;
 
 // ── LANDING PARTICLE SCREEN ──
 let landingRaf = null;
-let landingCollapsed = false;
 
 function startLandingScreen() {
   document.getElementById('s-home').classList.remove('active');
@@ -2389,24 +2440,35 @@ function startLandingScreen() {
   const lc = lcv.getContext('2d');
   const hint = document.getElementById('landingHint');
 
+  // [UX7] Use { once: true } to auto-clean the resize listener
   function resizeLanding() {
     lcv.width = innerWidth; lcv.height = innerHeight;
   }
   resizeLanding();
-  window.addEventListener('resize', resizeLanding);
+  window.addEventListener('resize', resizeLanding, { once: false });
 
   let phase = 0;
   let alpha = 0;
   let collapsing = false;
   let collapseProgress = 0;
+  let resizeCleanedUp = false;
 
-  // Show tap hint after 2s
+  function cleanupLandingResize() {
+    if (!resizeCleanedUp) {
+      window.removeEventListener('resize', resizeLanding);
+      resizeCleanedUp = true;
+    }
+  }
+
   setTimeout(() => {
     hint.style.color = 'rgba(240,204,136,0.35)';
   }, 2000);
 
   function drawLanding() {
-    if (!document.getElementById('s-landing').classList.contains('active')) return;
+    if (!document.getElementById('s-landing').classList.contains('active')) {
+      cleanupLandingResize();
+      return;
+    }
     lc.clearRect(0, 0, lcv.width, lcv.height);
     phase += 0.012;
     if (!collapsing) alpha = Math.min(alpha + 0.015, 1);
@@ -2423,7 +2485,6 @@ function startLandingScreen() {
       const r = baseR * breathFactor * (1 - eased * 0.85);
       const ga = alpha * (1 - eased);
 
-      // Implosion glow
       const glow = r * 2.5;
       const g = lc.createRadialGradient(cx, cy, 0, cx, cy, glow);
       g.addColorStop(0, `rgba(240,204,136,${(ga * 0.3).toFixed(3)})`);
@@ -2431,15 +2492,13 @@ function startLandingScreen() {
       lc.fillStyle = g;
       lc.beginPath(); lc.arc(cx, cy, glow, 0, Math.PI*2); lc.fill();
 
-      // Core
       lc.globalAlpha = ga;
       lc.fillStyle = `rgba(201,169,110,${ga.toFixed(3)})`;
       lc.beginPath(); lc.arc(cx, cy, r, 0, Math.PI*2); lc.fill();
       lc.globalAlpha = 1;
 
       if (collapseProgress >= 1) {
-        // Done collapsing — go to welcome
-        window.removeEventListener('resize', resizeLanding);
+        cleanupLandingResize();
         cancelAnimationFrame(landingRaf);
         localStorage.setItem('field_welcomed_landing', '1');
         buildWelcome();
@@ -2450,7 +2509,6 @@ function startLandingScreen() {
         return;
       }
     } else {
-      // Breathing glow
       const glow = baseR * breathFactor * 2.2;
       const g = lc.createRadialGradient(cx, cy, 0, cx, cy, glow);
       g.addColorStop(0, `rgba(240,204,136,${(alpha * 0.18).toFixed(3)})`);
@@ -2459,7 +2517,6 @@ function startLandingScreen() {
       lc.fillStyle = g;
       lc.beginPath(); lc.arc(cx, cy, glow, 0, Math.PI*2); lc.fill();
 
-      // Core particle
       const r = baseR * breathFactor;
       lc.globalAlpha = alpha * 0.55;
       lc.fillStyle = 'rgba(201,169,110,1)';
@@ -2474,9 +2531,7 @@ function startLandingScreen() {
     if (collapsing) return;
     collapsing = true;
     hint.style.color = 'rgba(240,204,136,0)';
-    // Haptic
     if (navigator.vibrate) navigator.vibrate(30);
-    // Play collapse signature
     initAudio();
     if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(()=>{});
     playCollapseSignature();
@@ -2548,7 +2603,6 @@ document.getElementById('wlcEnterBtn').addEventListener('click', e => {
 applyLang();
 if (fontLarge) document.body.classList.add('fs-large');
 
-// First launch: show landing particle, then welcome cards
 if (!localStorage.getItem('field_welcomed')) {
   startLandingScreen();
 } else {
