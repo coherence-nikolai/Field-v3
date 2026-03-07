@@ -3347,6 +3347,199 @@ function showDecBodyMap() {
   showBodyMap('witness', null);
 }
 
+// ══════════════════════════════════════
+// DISSOLUTION CHAMBER — AI Socratic mirror
+// Slots between body map and breath
+// 3 exchanges max · field-language · sparse
+// ══════════════════════════════════════
+let chamberExchanges = 0;
+let chamberHistory = [];
+let chamberTyping = false;
+
+const CHAMBER_SYSTEM = `You are a dissolution chamber — the last door before silence.
+
+The person has just named a shadow state (like "Anxious" or "Heavy") and located it in their body. They are about to enter a breath practice. Your role is to help them be with it, not to fix it.
+
+Rules:
+- Maximum 3 exchanges. After the 3rd user message, end with a single closing line and nothing more.
+- Ask only one question per response. Never two.
+- Speak in field-language: body, presence, sensation, location, quality. Not psychology or advice.
+- Be sparse. One to three sentences maximum per response.
+- Do not reassure. Do not explain. Do not interpret.
+- If they say something, reflect it back as sensation or location, then ask what's true about it right now.
+- Your first question opens toward the body. Example: "Where in [zone] does it live most precisely?"
+- Never use the words: heal, release, let go, process, trauma, therapy, anxiety, cope.
+- You are holding space, not guiding them anywhere.
+- After 3 exchanges, your final message ends with a closing line like: "That's enough to carry into the breath." or "The breath can hold the rest."`;
+
+
+let chamberLastAI = '';
+
+function appendChamberMsg(text, role) {
+  const msgs = document.getElementById('chamber-messages');
+  if (!msgs) return;
+  const div = document.createElement('div');
+  div.className = `chamber-msg ${role}`;
+  div.textContent = text;
+  msgs.appendChild(div);
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    div.style.opacity = '1';
+    msgs.scrollTop = msgs.scrollHeight;
+  }));
+}
+
+async function chamberCallAI(onDone) {
+  const apiKey = localStorage.getItem('field_api_key');
+  if (!apiKey) { startDecAcknowledge(); return; }
+
+  chamberTyping = true;
+
+  // Typing indicator
+  const msgs = document.getElementById('chamber-messages');
+  const dot = document.createElement('div');
+  dot.className = 'chamber-msg ai';
+  dot.style.opacity = '0.35';
+  dot.textContent = '·  ·  ·';
+  if (msgs) { msgs.appendChild(dot); msgs.scrollTop = msgs.scrollHeight; }
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 180,
+        system: CHAMBER_SYSTEM,
+        messages: chamberHistory
+      })
+    });
+
+    const data = await res.json();
+    if (dot.parentNode) dot.parentNode.removeChild(dot);
+
+    if (data.content && data.content[0]) {
+      const text = data.content[0].text.trim();
+      chamberLastAI = text;
+      appendChamberMsg(text, 'ai');
+      chamberTyping = false;
+      if (onDone) onDone();
+    } else {
+      // API error — skip silently to acknowledge
+      chamberTyping = false;
+      startDecAcknowledge();
+    }
+  } catch (err) {
+    if (dot.parentNode) dot.parentNode.removeChild(dot);
+    chamberTyping = false;
+    startDecAcknowledge();
+  }
+}
+
+function startDissolutionChamber() {
+  chamberExchanges = 0;
+  chamberHistory   = [];
+  chamberTyping    = false;
+  chamberLastAI    = '';
+  currentMode = 'chamber';
+  showBackBtn();
+  document.getElementById('backBtn').onclick = () => startDecohere();
+
+  const shadowName = lang === 'en' ? decStateName : decStateNameES;
+  const zoneName   = decBodySpot || 'body';
+
+  const contextEl = document.getElementById('chamber-context');
+  const msgsEl    = document.getElementById('chamber-messages');
+  const inputWrap = document.getElementById('chamber-input-wrap');
+  const skipEl    = document.getElementById('chamber-skip');
+  const inputEl   = document.getElementById('chamber-input');
+
+  msgsEl.innerHTML = '';
+  inputEl.value = '';
+  inputWrap.style.opacity = '0';
+  inputWrap.style.pointerEvents = 'none';
+  skipEl.style.opacity = '0';
+  skipEl.textContent = lang === 'en' ? 'continue to breath →' : 'continuar a la respiración →';
+  contextEl.style.opacity = '0';
+  contextEl.textContent = shadowName.toLowerCase() + ' · ' + zoneName;
+
+  // Seed history with context
+  chamberHistory = [{
+    role: 'user',
+    content: `I am with ${shadowName}, and I feel it in my ${zoneName}.`
+  }];
+
+  applyDecoherePalette();
+
+  showScreen('s-chamber', () => {
+    setTimeout(() => { contextEl.style.opacity = '1'; }, 600);
+    // Opening AI question arrives after a beat
+    setTimeout(() => {
+      chamberCallAI(() => {
+        // Show input and skip after first AI message
+        setTimeout(() => {
+          inputWrap.style.opacity = '1';
+          inputWrap.style.pointerEvents = 'all';
+          inputEl.focus();
+          skipEl.style.opacity = '1';
+        }, 600);
+      });
+    }, 1800);
+  });
+
+  // Skip always available
+  skipEl.addEventListener('click', exitChamber);
+  skipEl.addEventListener('touchend', e => { e.preventDefault(); exitChamber(); });
+}
+
+function chamberSend() {
+  if (chamberTyping) return;
+  const inputEl   = document.getElementById('chamber-input');
+  const inputWrap = document.getElementById('chamber-input-wrap');
+  const skipEl    = document.getElementById('chamber-skip');
+  const val = inputEl.value.trim();
+  if (!val) return;
+
+  inputEl.value = '';
+  inputWrap.style.opacity = '0';
+  inputWrap.style.pointerEvents = 'none';
+  skipEl.style.opacity = '0';
+
+  appendChamberMsg(val, 'user');
+  chamberHistory.push({ role: 'assistant', content: chamberLastAI });
+  chamberHistory.push({ role: 'user', content: val });
+  chamberExchanges++;
+
+  if (chamberExchanges >= 3) {
+    // Final exchange — after AI responds, only show "carry into breath"
+    chamberCallAI(() => {
+      setTimeout(() => {
+        skipEl.textContent = lang === 'en' ? 'carry this into breath →' : 'lleva esto a la respiración →';
+        skipEl.style.opacity = '1';
+      }, 1200);
+    });
+  } else {
+    chamberCallAI(() => {
+      setTimeout(() => {
+        inputWrap.style.opacity = '1';
+        inputWrap.style.pointerEvents = 'all';
+        document.getElementById('chamber-input').focus();
+        skipEl.style.opacity = '1';
+      }, 600);
+    });
+  }
+}
+
+function exitChamber() {
+  currentMode = 'witness';
+  startDecAcknowledge();
+}
+
+// ══════════════════════════════════════
 // PHASE 1: Acknowledgment — word fades in alone in silence, then breath begins
 function startDecAcknowledge() {
   const displayName = lang==='en' ? decStateName : decStateNameES;
@@ -3441,7 +3634,6 @@ function startDecAcknowledge() {
   });
 }
 
-// PHASE 2: Breath cycles
 function startDecBreath(displayName) {
   bgDimTarget = 0.25;
   const t = TRANSLATIONS[lang];
@@ -3645,185 +3837,6 @@ function startDecBreath(displayName) {
   dDelay(runCycle, 800);
 }
 
-// ══════════════════════════════════════
-// DISSOLUTION CHAMBER — AI-assisted witnessing
-// Slots between body map and breath
-// 3 Socratic exchanges max, field-language, sparse
-// ══════════════════════════════════════
-let chamberExchanges = 0;
-let chamberHistory = [];
-let chamberTyping = false;
-
-const CHAMBER_SYSTEM = `You are a dissolution chamber — the last door before silence.
-
-The person has just named a shadow state (like "Anxious" or "Heavy") and located it in their body. They are about to enter a breath practice. Your role is to help them be with it, not to fix it.
-
-Rules:
-- Maximum 3 exchanges. After the 3rd user message, end with a single closing line and nothing more.
-- Ask only one question per response. Never two.
-- Speak in field-language: body, presence, sensation, location, quality. Not psychology or advice.
-- Be sparse. One to three sentences maximum per response.
-- Do not reassure. Do not explain. Do not interpret.
-- If they say something, reflect it back as sensation or location, then ask what's true about it right now.
-- Your first question opens toward the body. Example: "Where in [zone] does it live most precisely?"
-- Never use the words: heal, release, let go, process, trauma, therapy, anxiety, cope.
-- You are holding space, not guiding them anywhere.
-- After 3 exchanges, your final message ends with a closing line like: "That's enough to carry into the breath." or "The breath can hold the rest."`;
-
-function startDissolutionChamber() {
-  currentMode = 'witness';
-  chamberExchanges = 0;
-  chamberHistory = [];
-  chamberTyping = false;
-
-  const shadowDisplay = lang === 'en' ? decStateName : decStateNameES;
-  const zoneDisplay   = decBodySpot || 'body';
-  const contextLabel  = `${shadowDisplay.toLowerCase()} · ${zoneDisplay}`;
-
-  showBackBtn();
-  document.getElementById('backBtn').onclick = () => startDecohere();
-
-  showScreen('s-chamber', () => {
-    const ctx    = document.getElementById('chamber-context');
-    const msgs   = document.getElementById('chamber-messages');
-    const inputW = document.getElementById('chamber-input-wrap');
-    const input  = document.getElementById('chamber-input');
-    const send   = document.getElementById('chamber-send');
-    const skip   = document.getElementById('chamber-skip');
-
-    msgs.innerHTML = '';
-    input.value = '';
-
-    // Context label fades in
-    ctx.textContent = contextLabel;
-    setTimeout(() => { ctx.style.opacity = '1'; }, 400);
-
-    // Skip always available
-    setTimeout(() => { skip.style.opacity = '1'; }, 1200);
-    const doSkip = () => { startDecAcknowledge(); };
-    skip.addEventListener('click', doSkip);
-    skip.addEventListener('touchend', e => { e.preventDefault(); doSkip(); });
-
-    // First AI question — no user message needed
-    const firstUserCtx = lang === 'en'
-      ? `I named "${decStateName}" and felt it in my ${zoneDisplay}.`
-      : `Nombré "${decStateNameES}" y lo sentí en mi ${zoneDisplay}.`;
-
-    chamberHistory = [{ role: 'user', content: firstUserCtx }];
-
-    // Small delay then first AI message appears
-    setTimeout(() => {
-      chamberCallAI(() => {
-        // After first AI message, show input
-        setTimeout(() => { inputW.style.opacity = '1'; input.focus(); }, 600);
-      });
-    }, 1400);
-
-    // Auto-grow textarea
-    input.addEventListener('input', () => {
-      input.style.height = 'auto';
-      input.style.height = Math.min(input.scrollHeight, 80) + 'px';
-    });
-
-    const doSend = () => {
-      const text = input.value.trim();
-      if (!text || chamberTyping) return;
-      input.value = '';
-      input.style.height = 'auto';
-      appendChamberMsg(text, 'user');
-      chamberHistory.push({ role: 'assistant', content: chamberLastAI });
-      chamberHistory.push({ role: 'user', content: text });
-      chamberExchanges++;
-
-      if (chamberExchanges >= 3) {
-        // Final exchange — AI closes, then auto-advance
-        chamberCallAI(() => {
-          inputW.style.opacity = '0';
-          inputW.style.pointerEvents = 'none';
-          skip.textContent = lang === 'en' ? 'enter the breath →' : 'entrar en la respiración →';
-          skip.style.color = 'rgba(240,230,208,.38)';
-          setTimeout(() => startDecAcknowledge(), 5000);
-        });
-      } else {
-        chamberCallAI(null);
-      }
-    };
-
-    send.addEventListener('click', doSend);
-    input.addEventListener('keydown', e => {
-      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doSend(); }
-    });
-  });
-}
-
-let chamberLastAI = '';
-
-function appendChamberMsg(text, role) {
-  const msgs = document.getElementById('chamber-messages');
-  if (!msgs) return;
-  const div = document.createElement('div');
-  div.className = `chamber-msg ${role}`;
-  div.textContent = text;
-  msgs.appendChild(div);
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-    div.style.opacity = '1';
-    msgs.scrollTop = msgs.scrollHeight;
-  }));
-}
-
-async function chamberCallAI(onDone) {
-  const apiKey = localStorage.getItem('field_api_key');
-  if (!apiKey) { startDecAcknowledge(); return; }
-
-  chamberTyping = true;
-
-  // Typing indicator
-  const msgs = document.getElementById('chamber-messages');
-  const dot = document.createElement('div');
-  dot.className = 'chamber-msg ai';
-  dot.style.opacity = '0.35';
-  dot.textContent = '·  ·  ·';
-  if (msgs) { msgs.appendChild(dot); msgs.scrollTop = msgs.scrollHeight; }
-
-  try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 180,
-        system: CHAMBER_SYSTEM,
-        messages: chamberHistory
-      })
-    });
-
-    const data = await res.json();
-    if (dot.parentNode) dot.parentNode.removeChild(dot);
-
-    if (data.content && data.content[0]) {
-      const text = data.content[0].text.trim();
-      chamberLastAI = text;
-      appendChamberMsg(text, 'ai');
-      chamberTyping = false;
-      if (onDone) onDone();
-    } else {
-      // API error — skip silently to acknowledge
-      chamberTyping = false;
-      startDecAcknowledge();
-    }
-  } catch (err) {
-    if (dot.parentNode) dot.parentNode.removeChild(dot);
-    chamberTyping = false;
-    startDecAcknowledge();
-  }
-}
-
-// PHASE 3: End
 function showDecEnd() {
   currentMode = 'witness-end';
   const t = TRANSLATIONS[lang];
