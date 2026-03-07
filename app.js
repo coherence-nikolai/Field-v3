@@ -187,6 +187,10 @@ class BreathOrb {
     this.flickPh = 0;
     // Label callback
     this.onPhaseChange = null;
+    // State word drawn inside orb — fades over 3 cycles
+    this.wordText = '';
+    this.wordAlpha = 0;
+    this.wordTargetAlpha = 0;
   }
 
   get elapsed() { return performance.now() - this.phaseStart; }
@@ -275,6 +279,8 @@ class BreathOrb {
     this.dispRadius += (targetRadius - this.dispRadius) * lerpSpeed;
     this.dispBlur   += (targetBlur   - this.dispBlur)   * lerpSpeed;
     this.dispGlow   += (targetGlow   - this.dispGlow)   * lerpSpeed;
+    // Word fade
+    this.wordAlpha  += (this.wordTargetAlpha - this.wordAlpha) * 0.03;
 
     // Age ripples
     this.ripples = this.ripples.filter(rp => {
@@ -348,6 +354,28 @@ class BreathOrb {
 
     cx.globalAlpha = 1;
     cx.restore();
+
+    // ── State word — drawn centred in orb, fades over 3 cycles ──
+    if (this.wordText && this.wordAlpha > 0.01) {
+      const wordA = this.wordAlpha * this.alpha;
+      // Word blurs slightly when orb expands (inhale/hold), sharpens on exhale
+      const wordBlur = Math.min(bl * 0.35, 4);
+      cx.save();
+      if (wordBlur > 0.5) cx.filter = `blur(${wordBlur.toFixed(1)}px)`;
+      cx.globalAlpha = wordA;
+      const fontSize = Math.max(18, Math.min(38, innerWidth * 0.07));
+      cx.font = `300 ${fontSize}px 'Cormorant Garamond', Georgia, serif`;
+      cx.textAlign = 'center';
+      cx.textBaseline = 'middle';
+      // Glow under text
+      cx.shadowColor = `rgba(240,210,140,${(wordA * 0.6).toFixed(2)})`;
+      cx.shadowBlur = 12 + (1 - wordA) * 8;
+      cx.fillStyle = `rgba(240,225,190,${wordA.toFixed(3)})`;
+      cx.fillText(this.wordText, px, py);
+      cx.shadowBlur = 0;
+      cx.filter = 'none';
+      cx.restore();
+    }
   }
 }
 
@@ -2238,6 +2266,8 @@ function startBreath() {
   breathOrb = new BreathOrb(startX, startY);
   breathOrb.targetX = innerWidth * 0.5;
   breathOrb.targetY = innerHeight * 0.5;
+  breathOrb.wordText = stateName;
+  breathOrb.wordTargetAlpha = 0; // starts hidden, revealed on first inhale
 
   function showText(text, cls, delayMs) {
     bDelay(() => {
@@ -2279,10 +2309,20 @@ function startBreath() {
 
   breathOrb.onPhaseChange = (phase, cycle) => {
     if (phase === 'inhale') {
+      // Word alpha by cycle: 1→0.85, 2→0.42, 3→0.10
+      if (breathOrb) {
+        const wordAlphas = [0.85, 0.42, 0.10];
+        breathOrb.wordTargetAlpha = wordAlphas[Math.min(cycle, 2)];
+      }
       // Minimal inhale label fades in with breath
       bDelay(() => { showText(cycleIn, 'cycle', 0); }, 500);
       bDelay(() => { btext.style.transition='opacity 0.8s ease'; btext.style.opacity='0'; }, INHALE - 600);
     } else if (phase === 'exhale') {
+      // Word dims further on exhale — pulled toward collapse
+      if (breathOrb) {
+        const exhaleAlphas = [0.55, 0.22, 0.0];
+        breathOrb.wordTargetAlpha = exhaleAlphas[Math.min(cycle, 2)];
+      }
       // Exhale label — slightly more present
       showText(cycleOut, 'cycle-exhale', 100);
       bDelay(() => { btext.style.transition='opacity 0.8s ease'; btext.style.opacity='0'; }, EXHALE - 600);
@@ -2292,6 +2332,9 @@ function startBreath() {
       const cw = document.getElementById('cword'); if (cw) cw.classList.remove('exhaling');
       const dot = document.getElementById('bdot' + (cycle - 1));
       if (dot) dot.classList.add('done');
+    } else if (phase === 'crystallised') {
+      // Word fully dissolved
+      if (breathOrb) breathOrb.wordTargetAlpha = 0;
     }
   };
 
@@ -2530,9 +2573,9 @@ function startDecohere() {
   }, 300);
   buildShadowGrid();
   const t = TRANSLATIONS[lang];
-  // Restore default padding for shadow grid view
+  // Restore default padding/gap for shadow grid view
   const scr = document.getElementById('s-decohere');
-  if (scr) scr.style.paddingTop = '';
+  if (scr) { scr.style.paddingTop = ''; scr.style.gap = ''; }
   document.getElementById('decArrivalLine').textContent = t.decArrivalLine;
   document.getElementById('decArrivalSub').textContent = t.decArrivalSub;
   showScreen('s-decohere');
@@ -2628,10 +2671,10 @@ function showBodyMap(mode, payload) {
     const sub  = document.getElementById('decArrivalSub');
     if (line) line.textContent = question;
     if (sub)  sub.textContent = '';
-    // Tighten top padding so body map has room
+    // Remove padding constraints — full screen figure
     const scr = document.getElementById('s-decohere');
-    if (scr) scr.style.paddingTop = 'clamp(56px,12vw,72px)';
-    grid.innerHTML = '<div class="bodymap-wrap" id="bodymapWrap"></div>';
+    if (scr) { scr.style.paddingTop = '0'; scr.style.gap = '0'; }
+    grid.innerHTML = '<div id="bodymapWrap" style="position:fixed;inset:0;"></div>';
     wrap = document.getElementById('bodymapWrap');
   } else {
     // Collapse: use dedicated s-bodymap screen
@@ -2649,7 +2692,207 @@ function showBodyMap(mode, payload) {
     showScreen('s-bodymap');
   }
 
-  // Canvas figure
+  // ── Decohere: full-screen canvas figure ──
+  if (isDecohere) {
+    const W = innerWidth, H = innerHeight;
+
+    // Question label
+    const qEl = document.createElement('div');
+    qEl.style.cssText = `position:absolute;top:clamp(72px,16vw,96px);left:50%;
+      transform:translateX(-50%);font-size:clamp(18px,5vw,26px);font-weight:300;
+      color:rgba(240,230,208,.72);letter-spacing:.04em;text-align:center;
+      pointer-events:none;z-index:2;line-height:1.5;white-space:nowrap;`;
+    qEl.textContent = question;
+    wrap.appendChild(qEl);
+
+    // Full-screen canvas
+    const fc = document.createElement('canvas');
+    fc.width = W; fc.height = H;
+    fc.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1;';
+    wrap.appendChild(fc);
+    const fx = fc.getContext('2d');
+
+    // Zone definitions — Y fractions of screen height, centred around figure
+    // Figure occupies roughly 28–82% of screen height, 30–70% of width
+    const FIG_TOP  = 0.16,  FIG_BOT = 0.88;
+    const FIG_L    = 0.25,  FIG_R   = 0.75;
+    const figH = (FIG_BOT - FIG_TOP) * H;
+    const figW = (FIG_R - FIG_L) * W;
+    const figX = FIG_L * W, figY = FIG_TOP * H;
+
+    // Dot positions as fraction of figure space
+    const BODY_PTS_LOCAL = [
+      ...(() => {
+        const pts = []; const cx=0.5, cy=0.09, rr=0.072;
+        for(let a=0;a<Math.PI*2;a+=Math.PI/8) pts.push([cx+Math.cos(a)*rr, cy+Math.sin(a)*rr*1.1, 1.4, 7]);
+        return pts;
+      })(),
+      [0.5, 0.165, 1.2, 6],
+      [0.26, 0.215, 1.5, 8], [0.38, 0.20, 1.2, 6], [0.5, 0.195, 1.1, 5],
+      [0.62, 0.20, 1.2, 6], [0.74, 0.215, 1.5, 8],
+      [0.21, 0.28, 1.2, 6], [0.18, 0.35, 1.1, 5], [0.16, 0.42, 1.1, 5],
+      [0.79, 0.28, 1.2, 6], [0.82, 0.35, 1.1, 5], [0.84, 0.42, 1.1, 5],
+      [0.27, 0.26, 1.1, 5], [0.25, 0.34, 1.1, 5], [0.24, 0.42, 1.1, 5],
+      [0.73, 0.26, 1.1, 5], [0.75, 0.34, 1.1, 5], [0.76, 0.42, 1.1, 5],
+      [0.5, 0.25, 1.1, 5], [0.42, 0.28, 1.0, 4], [0.58, 0.28, 1.0, 4],
+      [0.30, 0.50, 1.1, 5], [0.38, 0.505, 1.0, 4], [0.5, 0.51, 1.1, 5],
+      [0.62, 0.505, 1.0, 4], [0.70, 0.50, 1.1, 5],
+      [0.14, 0.50, 1.1, 5], [0.12, 0.57, 1.1, 5],
+      [0.86, 0.50, 1.1, 5], [0.88, 0.57, 1.1, 5],
+      [0.28, 0.595, 1.4, 7], [0.38, 0.60, 1.1, 5], [0.5, 0.605, 1.2, 5],
+      [0.62, 0.60, 1.1, 5], [0.72, 0.595, 1.4, 7],
+    ];
+
+    const SPOT_BANDS_Y = {
+      head:    [0.00, 0.20],
+      throat:  [0.14, 0.26],
+      chest:   [0.22, 0.44],
+      stomach: [0.42, 0.56],
+      pelvis:  [0.54, 0.72],
+    };
+
+    // Zone label positions (fraction of figure height from top)
+    const ZONES = [
+      { key:'head',    labelY: 0.08 },
+      { key:'throat',  labelY: 0.21 },
+      { key:'chest',   labelY: 0.33 },
+      { key:'stomach', labelY: 0.49 },
+      { key:'pelvis',  labelY: 0.64 },
+    ];
+    const ZONE_LABELS = {
+      en: { head:'head', throat:'throat', chest:'chest', stomach:'stomach', pelvis:'pelvis' },
+      es: { head:'cabeza', throat:'garganta', chest:'pecho', stomach:'vientre', pelvis:'pelvis' }
+    };
+
+    let activeSpot = null;
+    let glowPhase = 0;
+    let somatic = false; // true during somatic pause
+    let figRafId = null;
+
+    // Echo word shown on tap
+    const echoEl = document.createElement('div');
+    echoEl.style.cssText = `position:absolute;left:50%;transform:translateX(-50%);
+      font-size:clamp(28px,8vw,44px);font-weight:300;
+      font-family:'Cormorant Garamond',Georgia,serif;font-style:italic;
+      color:rgba(200,185,210,.9);text-shadow:0 0 30px rgba(180,160,200,.5);
+      pointer-events:none;z-index:4;opacity:0;transition:opacity 1s ease;
+      letter-spacing:.06em;white-space:nowrap;`;
+    wrap.appendChild(echoEl);
+
+    function drawFigure() {
+      if (currentMode !== 'decohere') { cancelAnimationFrame(figRafId); return; }
+      fx.clearRect(0, 0, W, H);
+      glowPhase += 0.025;
+
+      BODY_PTS_LOCAL.forEach(([nx, ny, r, gr]) => {
+        const px = figX + nx * figW;
+        const py = figY + ny * figH;
+        let inSpot = false;
+        if (activeSpot && SPOT_BANDS_Y[activeSpot]) {
+          const [lo, hi] = SPOT_BANDS_Y[activeSpot];
+          if (ny >= lo && ny <= hi) inSpot = true;
+        }
+        const pulse = inSpot
+          ? 0.6 + 0.4 * Math.sin(glowPhase * 2.2)
+          : 0.45 + 0.14 * Math.sin(glowPhase + nx * 4);
+        const alpha = inSpot ? 0.65 + 0.3 * pulse : 0.20 + 0.10 * pulse;
+        const glowA = inSpot ? 0.28 * pulse : 0.07 * pulse;
+        const glowRad = inSpot ? gr * 2.2 : gr * 1.2;
+
+        const grad = fx.createRadialGradient(px, py, 0, px, py, glowRad);
+        grad.addColorStop(0, `${ptGlowColor}${glowA.toFixed(3)})`);
+        grad.addColorStop(1, `${ptGlowColor}0)`);
+        fx.fillStyle = grad;
+        fx.beginPath(); fx.arc(px, py, glowRad, 0, Math.PI*2); fx.fill();
+        fx.globalAlpha = alpha;
+        fx.fillStyle = ptColor;
+        fx.beginPath(); fx.arc(px, py, r * (inSpot ? 1.8 : 1), 0, Math.PI*2); fx.fill();
+        fx.globalAlpha = 1;
+      });
+
+      // Draw zone labels at right side of figure — dim unless active
+      ZONES.forEach(z => {
+        const lx = figX + figW * 0.82;
+        const ly = figY + z.labelY * figH;
+        const isActive = activeSpot === z.key;
+        const lAlpha = isActive ? 0.90 : 0.28 + 0.08 * Math.sin(glowPhase + z.labelY * 5);
+        fx.globalAlpha = lAlpha;
+        fx.font = `300 ${Math.round(figW * 0.12)}px 'Plus Jakarta Sans', sans-serif`;
+        fx.fillStyle = isActive ? 'rgba(210,190,230,1)' : 'rgba(200,185,215,1)';
+        fx.textAlign = 'left';
+        fx.fillText(ZONE_LABELS[lang][z.key], lx, ly);
+        fx.globalAlpha = 1;
+      });
+
+      figRafId = requestAnimationFrame(drawFigure);
+    }
+    figRafId = requestAnimationFrame(drawFigure);
+
+    // Invisible hit zones overlaid on figure
+    ZONES.forEach((z, idx) => {
+      const [lo, hi] = SPOT_BANDS_Y[z.key];
+      const hitTop  = figY + lo * figH;
+      const hitH    = (hi - lo) * figH;
+      const hitL    = figX - figW * 0.1;
+      const hitW    = figW * 1.2;
+
+      const hitBtn = document.createElement('button');
+      hitBtn.style.cssText = `position:absolute;left:${hitL}px;top:${hitTop}px;
+        width:${hitW}px;height:${hitH}px;
+        background:none;border:none;cursor:pointer;z-index:3;
+        -webkit-tap-highlight-color:transparent;`;
+      hitBtn.setAttribute('aria-label', ZONE_LABELS[lang][z.key]);
+
+      hitBtn.addEventListener('click', () => {
+        if (somatic) return;
+        somatic = true;
+        activeSpot = z.key;
+
+        // Play zone tone
+        if (audioCtx) {
+          const zoneFreqs = { head:1056, throat:792, chest:528, stomach:396, pelvis:264 };
+          const f = zoneFreqs[z.key] || 528;
+          const oz = audioCtx.createOscillator(), gz = audioCtx.createGain();
+          oz.type='sine'; oz.frequency.value=f;
+          gz.gain.setValueAtTime(0,audioCtx.currentTime);
+          gz.gain.linearRampToValueAtTime(0.045,audioCtx.currentTime+0.12);
+          gz.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+2.2);
+          oz.connect(gz); gz.connect(audioCtx.destination); oz.start(); oz.stop(audioCtx.currentTime+2.5);
+        }
+
+        // Echo the zone label
+        echoEl.textContent = ZONE_LABELS[lang][z.key];
+        const echoY = figY + z.labelY * figH - 24;
+        echoEl.style.top = Math.max(120, Math.min(H - 100, echoY)) + 'px';
+        echoEl.style.opacity = '1';
+
+        // Hide question label
+        qEl.style.transition = 'opacity 0.8s ease';
+        qEl.style.opacity = '0';
+
+        // Somatic pause — 1.6s of the zone glowing, then transition
+        setTimeout(() => {
+          echoEl.style.transition = 'opacity 1s ease';
+          echoEl.style.opacity = '0';
+          setTimeout(() => {
+            cancelAnimationFrame(figRafId);
+            decBodySpot = z.key;
+            startDecAcknowledge();
+          }, 600);
+        }, 1600);
+      });
+      hitBtn.addEventListener('touchend', e => { e.preventDefault(); hitBtn.click(); });
+
+      // Staggered fade in
+      hitBtn.style.opacity = '0';
+      wrap.appendChild(hitBtn);
+      setTimeout(() => { hitBtn.style.transition = 'opacity 0.6s ease'; hitBtn.style.opacity = '1'; }, 80 * idx + 200);
+    });
+
+    return; // decohere path done
+  }
+
+  // ── Collapse: original layout (smaller figure, side labels) ──
   const figDiv = document.createElement('div');
   figDiv.className = 'bodymap-figure';
   const fc = document.createElement('canvas');
@@ -2665,8 +2908,7 @@ function showBodyMap(mode, payload) {
   let figRafId = null;
 
   function drawFigure() {
-    if (isDecohere && currentMode !== 'decohere') { cancelAnimationFrame(figRafId); return; }
-    if (!isDecohere && currentMode !== 'collapse') { cancelAnimationFrame(figRafId); return; }
+    if (currentMode !== 'collapse') { cancelAnimationFrame(figRafId); return; }
     fx.clearRect(0, 0, W, H);
     glowPhase += 0.03;
     BODY_PTS.forEach(([nx, ny, r, gr]) => {
@@ -2694,31 +2936,23 @@ function showBodyMap(mode, payload) {
   }
   figRafId = requestAnimationFrame(drawFigure);
 
-  // Spot buttons
+  // Collapse spot buttons (original side labels)
   BODY_SPOTS[lang].forEach((spot, idx) => {
     const b = document.createElement('button');
     b.className = 'body-node';
     b.textContent = spot.label;
     b.style.top = spot.top + '%';
     b.style.opacity = '0';
-    b.style.transition = 'opacity 0.9s ease, transform 0.9s ease';
-    b.style.transform = 'translateX(-50%) translateY(8px)';
-    b.style.left = 'max(8px, 22%)';
-
-    if (!isDecohere) {
-      // Collapse — right side labels
-      b.style.left = 'auto';
-      b.style.right = 'max(8px, 18%)';
-      b.style.transform = 'translateY(8px)';
-      b.style.transition = 'opacity 0.9s ease, transform 0.9s ease, border-color 0.3s ease, color 0.3s ease';
-    }
+    b.style.left = 'auto';
+    b.style.right = 'max(8px, 18%)';
+    b.style.transform = 'translateY(8px)';
+    b.style.transition = 'opacity 0.9s ease, transform 0.9s ease, border-color 0.3s ease, color 0.3s ease';
 
     b.addEventListener('click', () => {
       cancelAnimationFrame(figRafId);
       activeSpot = spot.key;
       document.querySelectorAll('.body-node').forEach(x => x.classList.remove('active'));
       b.classList.add('active');
-      // Body zone tones: head=high, pelvis=low
       if (audioCtx) {
         const zoneFreqs = { head:1056, throat:792, chest:528, stomach:396, pelvis:264 };
         const f = zoneFreqs[spot.key] || 528;
@@ -2729,39 +2963,23 @@ function showBodyMap(mode, payload) {
         gz.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+1.5);
         oz.connect(gz); gz.connect(audioCtx.destination); oz.start(); oz.stop(audioCtx.currentTime+1.8);
       }
-
-      if (isDecohere) {
-        decBodySpot = spot.key;
-        setTimeout(() => startDecAcknowledge(), 280);
-      } else {
-        // Collapse: set particle origin from body location, then proceed
-        collapseBodySpot = spot.key;
-        const spotFraction = idx / (BODY_SPOTS[lang].length - 1);
-        // Map spot fraction to canvas Y, then to screen Y
-        const pY = (0.09 + spotFraction * 0.55) * innerHeight;
-        const chosen = spParticles[spChosen % Math.max(spParticles.length, 1)];
-        if (chosen) {
-          chosen.cx = 0.5;
-          chosen.cy = 0.09 + spotFraction * 0.55;
-          chosen.x = innerWidth * 0.5;
-          chosen.y = pY;
-        }
-        setTimeout(() => {
-          showScreen('s-field', () => {
-            // brief return to field overlay, then straight into selectState
-            selectState(payload);
-          });
-        }, 220);
+      collapseBodySpot = spot.key;
+      const spotFraction = idx / (BODY_SPOTS[lang].length - 1);
+      const pY = (0.09 + spotFraction * 0.55) * innerHeight;
+      const chosen = spParticles[spChosen % Math.max(spParticles.length, 1)];
+      if (chosen) {
+        chosen.cx = 0.5;
+        chosen.cy = 0.09 + spotFraction * 0.55;
+        chosen.x = innerWidth * 0.5;
+        chosen.y = pY;
       }
+      setTimeout(() => {
+        showScreen('s-field', () => { selectState(payload); });
+      }, 220);
     });
     b.addEventListener('touchend', e => { e.preventDefault(); b.click(); });
     wrap.appendChild(b);
-    setTimeout(() => {
-      b.style.opacity = '1';
-      b.style.transform = isDecohere
-        ? 'translateX(-50%) translateY(0)'
-        : 'translateY(0)';
-    }, 120 * idx);
+    setTimeout(() => { b.style.opacity = '1'; b.style.transform = 'translateY(0)'; }, 120 * idx);
   });
 }
 
