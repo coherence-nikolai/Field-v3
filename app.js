@@ -1102,66 +1102,69 @@ function playDecohereRelease() {
   });
 }
 
-// Witness breath audio — violet palette, interior, dissolving
-// Inhale: rising minor third from 174Hz (solfeggio liberation), soft triangle waves
-function playWitnessInhale() {
+// Witness binaural drone — 174Hz L + 178Hz R = 4Hz delta/theta beat
+// Starts at breath entry, fades out after morph
+function startWitnessDrone() {
   if (!audioCtx) return;
-  // Triangle waves — softer, more interior than collapse sine
-  [[174, 0], [261, 0.12], [348, 0.22]].forEach(([f, delay]) => {
-    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
-    o.type = 'triangle';
-    o.frequency.setValueAtTime(f * 0.92, audioCtx.currentTime + delay);
-    o.frequency.linearRampToValueAtTime(f, audioCtx.currentTime + delay + 4.2);
-    const t0 = audioCtx.currentTime + delay;
-    g.gain.setValueAtTime(0, t0);
-    g.gain.linearRampToValueAtTime(0.022 - delay * 0.025, t0 + 0.8);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 5.5);
-    o.connect(g); g.connect(audioCtx.destination); o.start(t0); o.stop(t0 + 6);
+  // Stop any existing witness drone
+  stopWitnessDrone();
+  const nodes = [];
+  // Left channel — 174Hz (solfeggio liberation)
+  const splitter = audioCtx.createChannelMerger(2);
+  splitter.connect(audioCtx.destination);
+
+  [[174, 0], [178, 1]].forEach(([freq, channel]) => {
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    const pan = audioCtx.createStereoPanner();
+    o.type = 'sine';
+    o.frequency.value = freq;
+    pan.pan.value = channel === 0 ? -1 : 1;
+    g.gain.setValueAtTime(0, audioCtx.currentTime);
+    g.gain.linearRampToValueAtTime(0.06, audioCtx.currentTime + 3.5);
+    o.connect(g); g.connect(pan); pan.connect(audioCtx.destination);
+    o.start();
+    nodes.push({ o, g });
   });
-  // Very soft noise — like being breathed rather than breathing
-  try {
-    const bufLen = audioCtx.sampleRate * 5;
-    const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
-    const data = buf.getChannelData(0);
-    for (let i = 0; i < bufLen; i++) data[i] = (Math.random() * 2 - 1);
-    const src = audioCtx.createBufferSource();
-    src.buffer = buf;
-    const filt = audioCtx.createBiquadFilter();
-    filt.type = 'lowpass'; filt.frequency.value = 400; filt.Q.value = 0.6;
-    const g2 = audioCtx.createGain();
-    g2.gain.setValueAtTime(0, audioCtx.currentTime);
-    g2.gain.linearRampToValueAtTime(0.007, audioCtx.currentTime + 1.8);
-    g2.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 5.2);
-    src.connect(filt); filt.connect(g2); g2.connect(audioCtx.destination);
-    src.start(); src.stop(audioCtx.currentTime + 5.5);
-  } catch(e) {}
+
+  // Slow tremolo layer — 174Hz, 0.08Hz amplitude modulation, very subtle
+  const tremoloOsc = audioCtx.createOscillator();
+  const tremoloGain = audioCtx.createGain();
+  const tremoloDepth = audioCtx.createGain();
+  const tremoloCarrier = audioCtx.createOscillator();
+  const tremoloCarrierGain = audioCtx.createGain();
+  tremoloOsc.frequency.value = 0.08; // one full breath-like pulse every ~12s
+  tremoloOsc.type = 'sine';
+  tremoloDepth.gain.value = 0.012;
+  tremoloCarrier.type = 'sine';
+  tremoloCarrier.frequency.value = 174;
+  tremoloCarrierGain.gain.setValueAtTime(0, audioCtx.currentTime);
+  tremoloCarrierGain.gain.linearRampToValueAtTime(0.028, audioCtx.currentTime + 4);
+  tremoloOsc.connect(tremoloDepth);
+  tremoloDepth.connect(tremoloCarrierGain.gain);
+  tremoloCarrier.connect(tremoloCarrierGain);
+  tremoloCarrierGain.connect(audioCtx.destination);
+  tremoloOsc.start(); tremoloCarrier.start();
+  nodes.push({ o: tremoloOsc, g: tremoloDepth });
+  nodes.push({ o: tremoloCarrier, g: tremoloCarrierGain });
+
+  window._witnessDroneNodes = nodes;
 }
 
-// Exhale: slow descending — shadow releasing, minor quality
-function playWitnessExhale() {
-  if (!audioCtx) return;
-  [[348, 0], [261, 0.14], [174, 0.26]].forEach(([f, delay]) => {
-    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
-    o.type = 'triangle';
-    o.frequency.setValueAtTime(f, audioCtx.currentTime + delay);
-    o.frequency.exponentialRampToValueAtTime(f * 0.82, audioCtx.currentTime + delay + 5);
-    const t0 = audioCtx.currentTime + delay;
-    g.gain.setValueAtTime(0, t0);
-    g.gain.linearRampToValueAtTime(0.026 - delay * 0.025, t0 + 0.4);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 6.2);
-    o.connect(g); g.connect(audioCtx.destination); o.start(t0); o.stop(t0 + 6.5);
+function stopWitnessDrone(fadeTime) {
+  const fade = fadeTime || 3.5;
+  if (!window._witnessDroneNodes) return;
+  window._witnessDroneNodes.forEach(({ o, g }) => {
+    try {
+      g.gain.cancelScheduledValues(audioCtx.currentTime);
+      g.gain.setValueAtTime(g.gain.value, audioCtx.currentTime);
+      g.gain.linearRampToValueAtTime(0, audioCtx.currentTime + fade);
+      o.stop(audioCtx.currentTime + fade + 0.1);
+    } catch(e) {}
   });
-  // Low dissolve chord — the shadow letting go
-  [174, 219].forEach((f, i) => {
-    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
-    o.type = 'sine'; o.frequency.value = f;
-    const t0 = audioCtx.currentTime + i * 0.08;
-    g.gain.setValueAtTime(0, t0);
-    g.gain.linearRampToValueAtTime(0.038 - i * 0.01, t0 + 0.3);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 6.5);
-    o.connect(g); g.connect(audioCtx.destination); o.start(t0); o.stop(t0 + 7);
-  });
+  window._witnessDroneNodes = null;
 }
+
 function playScatterSound() {
   if (!audioCtx) return;
   const buf = audioCtx.createBuffer(1, audioCtx.sampleRate*0.3, audioCtx.sampleRate);
@@ -5209,6 +5212,7 @@ function startDecBreath(displayName) {
           orb.wordGlowIntensity = 1;
           orb.startPhase('morph');
           orb.onMorphDone = () => {
+            stopWitnessDrone(2.5);
             if (window._decOrb) { window._decOrb.alpha = 0; window._decOrb = null; }
           };
         }
@@ -5229,7 +5233,6 @@ function startDecBreath(displayName) {
         window._decOrb.wordTargetAlpha = 0.45;
       }
       dronePitch(true);
-      playWitnessInhale();
     }, 100);
 
     // Hold
@@ -5241,7 +5244,6 @@ function startDecBreath(displayName) {
       if (navigator.vibrate) navigator.vibrate(22);
       dronePitch(false);
       if (window._decOrb) window._decOrb.startPhase('exhale');
-      playWitnessExhale();
     }, 6200);
 
     // Dot lights at end of exhale
@@ -5258,6 +5260,7 @@ function startDecBreath(displayName) {
   }
 
   // Pre-breath instructions
+  startWitnessDrone();
   dDelay(() => setBtext(lang === 'en' ? 'breathe in' : 'inhala'), 800);
   dDelay(() => setBtext(lang === 'en' ? `exhale into · ${displayName}` : `exhala hacia · ${displayName}`), 5000);
   dDelay(() => { if (window._decOrb) window._decOrb.wordTargetAlpha = 0.28; }, 5000);
@@ -5317,6 +5320,7 @@ function showDecEnd() {
 function clearAllDec() {
   decBreathTimers.forEach(clearTimeout); decBreathTimers = [];
   if (window._decOrb) { window._decOrb = null; }
+  stopWitnessDrone(0.8);
   const dw = document.getElementById('dec-state-word');
   if (dw && dw.parentNode) dw.parentNode.removeChild(dw);
 }
