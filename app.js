@@ -3491,12 +3491,17 @@ function showBodyMap(mode, payload) {
             decBodySpot = z.key;
             const mainCv = document.getElementById('cv');
             if (mainCv) { mainCv.style.transition = 'opacity 0.8s ease'; mainCv.style.opacity = '1'; }
-            const apiKey = localStorage.getItem('field_api_key');
-            if (apiKey) {
-              startDissolutionChamber();
-            } else {
-              startDecAcknowledge();
-            }
+
+            // Tone picker — pleasant / unpleasant / neutral
+            showTonePicker(wrap, (toneKey) => {
+              // Log the somatic data
+              logSession({ type: 'somatic', shadow: decStateName, zone: z.key, tone: toneKey, ts: Date.now() });
+              // Voice sensing layer — speak into the zone before chamber
+              showVoiceSensingLayer(wrap, z.key, decStateName, () => {
+                const apiKey = localStorage.getItem('field_api_key');
+                if (apiKey) { startDissolutionChamber(); } else { startDecAcknowledge(); }
+              });
+            });
           }, 900);
         }, 2200);
       });
@@ -3601,6 +3606,292 @@ function showBodyMap(mode, payload) {
 function showDecBodyMap() {
   // Legacy wrapper — routes to shared showBodyMap
   showBodyMap('witness', null);
+}
+
+// ══════════════════════════════════════
+// VOICE SENSING LAYER
+// Between body-map tap and dissolution chamber.
+// User speaks what they feel in the body zone;
+// AI reflects one quiet line back.
+// ══════════════════════════════════════
+const VOICE_SENSING_SYSTEM = `You are a somatic mirror. The person has just located a feeling in their body and spoken about it.
+
+You receive: the body location, the shadow word they named, and what they said.
+Your role: reflect one line back — not analysis, not advice. Just a quiet acknowledgement of what you heard.
+
+Rules:
+- One line only. Maximum 12 words.
+- Field-language: locate, locate it, feel, name, body, present, held, sensation, weight, warmth.
+- Do not repeat their words back verbatim. Transform slightly.
+- Do not interpret why. Do not ask questions.
+- Speak directly, quietly. No metaphor. No poetry.
+- Never use: mindfulness, trauma, healing, process, journey, wellbeing.
+- Sometimes silence is right: if their words are already clear, just confirm with two words like "It's there." or "You found it."`;
+
+// Tone picker — shown after body zone tap, before voice layer
+function showTonePicker(container, onSelect) {
+  const t = lang === 'en';
+  const tones = t
+    ? [{ key:'pleasant', label:'pleasant', color:'rgba(140,200,160,', glow:'rgba(120,180,140,' },
+       { key:'unpleasant', label:'unpleasant', color:'rgba(200,140,140,', glow:'rgba(180,120,120,' },
+       { key:'neutral', label:'neutral', color:'rgba(200,185,210,', glow:'rgba(180,165,195,' }]
+    : [{ key:'pleasant', label:'agradable', color:'rgba(140,200,160,', glow:'rgba(120,180,140,' },
+       { key:'unpleasant', label:'desagradable', color:'rgba(200,140,140,', glow:'rgba(180,120,120,' },
+       { key:'neutral', label:'neutro', color:'rgba(200,185,210,', glow:'rgba(180,165,195,' }];
+
+  const layer = document.createElement('div');
+  layer.style.cssText = `position:fixed;inset:0;z-index:22;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:clamp(20px,6vh,36px);
+    background:rgba(14,12,10,0.82);opacity:0;transition:opacity .9s ease;padding:0 32px;`;
+
+  const label = document.createElement('div');
+  label.style.cssText = `font-size:clamp(13px,3.2vw,15px);letter-spacing:.18em;
+    color:rgba(240,230,208,.35);text-transform:uppercase;text-align:center;`;
+  label.textContent = t ? 'its quality' : 'su cualidad';
+
+  const btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:clamp(10px,3vw,18px);';
+
+  tones.forEach(tone => {
+    const b = document.createElement('button');
+    b.style.cssText = `background:none;border:1px solid ${tone.color}0.28);border-radius:24px;
+      padding:clamp(8px,2vh,12px) clamp(14px,4vw,22px);cursor:pointer;font-family:inherit;
+      font-size:clamp(12px,3vw,15px);letter-spacing:.10em;color:${tone.color}0.65);
+      -webkit-tap-highlight-color:transparent;
+      transition:all .25s ease;`;
+    b.textContent = tone.label;
+
+    const select = () => {
+      b.style.borderColor = `${tone.color}0.75)`;
+      b.style.color = `${tone.color}0.95)`;
+      b.style.boxShadow = `0 0 18px ${tone.glow}0.3)`;
+      if (navigator.vibrate) navigator.vibrate(12);
+      setTimeout(() => {
+        layer.style.opacity = '0';
+        setTimeout(() => { layer.remove(); onSelect(tone.key); }, 700);
+      }, 280);
+    };
+    b.addEventListener('click', select);
+    b.addEventListener('touchend', e => { e.preventDefault(); select(); });
+    btnRow.appendChild(b);
+  });
+
+  layer.appendChild(label);
+  layer.appendChild(btnRow);
+  container.appendChild(layer);
+  requestAnimationFrame(() => { requestAnimationFrame(() => { layer.style.opacity = '1'; }); });
+}
+
+function showVoiceSensingLayer(container, zoneKey, shadowWord, onComplete) {
+  const hasSpeech = ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
+  const apiKey = localStorage.getItem('field_api_key');
+
+  // If no speech API and no API key, skip entirely
+  if (!hasSpeech && !apiKey) { setTimeout(onComplete, 0); return; }
+
+  const t = lang === 'en';
+  const zoneLabels = {
+    en: { head:'head', throat:'throat', chest:'chest', stomach:'stomach', pelvis:'pelvis' },
+    es: { head:'cabeza', throat:'garganta', chest:'pecho', stomach:'vientre', pelvis:'pelvis' }
+  };
+  const zoneLabel = zoneLabels[lang][zoneKey] || zoneKey;
+
+  // Layer element — sits over body-map wrap, full screen
+  const layer = document.createElement('div');
+  layer.id = 'voice-sense-layer';
+  layer.style.cssText = `position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:clamp(18px,5vh,32px);
+    background:rgba(14,12,10,0);transition:background 1.2s ease;padding:0 clamp(24px,8vw,52px);`;
+  container.appendChild(layer);
+
+  // Prompt text
+  const prompt = document.createElement('div');
+  prompt.style.cssText = `font-size:clamp(17px,4.5vw,22px);font-weight:300;letter-spacing:.05em;
+    color:rgba(240,230,208,.0);font-family:'Cormorant Garamond',Georgia,serif;font-style:italic;
+    text-align:center;line-height:1.6;transition:color 1.4s ease;max-width:320px;`;
+  const locationLine = t ? `in your ${zoneLabel}` : `en tu ${zoneLabel}`;
+  prompt.innerHTML = `${shadowWord}<br><span style="font-size:.72em;color:rgba(240,230,208,.45);letter-spacing:.08em;font-style:normal;">${locationLine}</span>`;
+  layer.appendChild(prompt);
+
+  // AI reflection line
+  const reflectionEl = document.createElement('div');
+  reflectionEl.style.cssText = `font-size:clamp(13px,3.4vw,16px);letter-spacing:.08em;
+    color:rgba(201,169,110,.0);text-align:center;line-height:1.7;min-height:22px;
+    transition:color 1.2s ease;max-width:280px;`;
+  layer.appendChild(reflectionEl);
+
+  // Voice orb button — or text input fallback
+  const micWrap = document.createElement('div');
+  micWrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:12px;';
+
+  let spokenText = '';
+  let isListening = false;
+  let recog = null;
+  let startListening = () => {}; // hoisted — overwritten if speech available
+
+  if (hasSpeech) {
+    const Recog = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recog = new Recog();
+    recog.continuous = false;
+    recog.interimResults = true;
+    recog.lang = lang === 'es' ? 'es-ES' : 'en-US';
+
+    const micOrb = document.createElement('button');
+    micOrb.style.cssText = `width:72px;height:72px;border-radius:50%;background:none;
+      border:1.5px solid rgba(201,169,110,.22);cursor:pointer;
+      display:flex;align-items:center;justify-content:center;
+      -webkit-tap-highlight-color:transparent;transition:all .4s ease;position:relative;`;
+    micOrb.innerHTML = `<span style="font-size:28px;line-height:1;">🎙</span>`;
+
+    const micLabel = document.createElement('div');
+    micLabel.style.cssText = `font-size:clamp(10px,2.6vw,12px);letter-spacing:.16em;
+      color:rgba(240,230,208,.28);transition:color .4s ease;`;
+    micLabel.textContent = t ? 'speak' : 'hablar';
+
+    const interimEl = document.createElement('div');
+    interimEl.style.cssText = `font-size:clamp(12px,3.2vw,15px);font-style:italic;
+      color:rgba(240,230,208,.38);text-align:center;min-height:20px;max-width:260px;
+      transition:opacity .4s ease;letter-spacing:.03em;`;
+
+    startListening = () => {
+      if (isListening) return;
+      isListening = true;
+      micOrb.style.borderColor = 'rgba(201,169,110,.7)';
+      micOrb.style.boxShadow = '0 0 24px rgba(201,169,110,.3)';
+      micOrb.style.animation = 'micPulse 1.8s ease-in-out infinite';
+      micLabel.textContent = t ? 'listening...' : 'escuchando...';
+      micLabel.style.color = 'rgba(201,169,110,.65)';
+      if (navigator.vibrate) navigator.vibrate(10);
+      try { recog.start(); } catch(e) {}
+    };
+
+    recog.onresult = (e) => {
+      let interim = '', final = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) final += e.results[i][0].transcript;
+        else interim += e.results[i][0].transcript;
+      }
+      interimEl.textContent = final || interim;
+      if (final) spokenText = final.trim();
+    };
+
+    recog.onend = () => {
+      isListening = false;
+      micOrb.style.borderColor = '';
+      micOrb.style.boxShadow = '';
+      micOrb.style.animation = '';
+      if (spokenText) {
+        micLabel.textContent = t ? 'received' : 'recibido';
+        micLabel.style.color = 'rgba(201,169,110,.5)';
+        interimEl.style.opacity = '0';
+        if (apiKey) getVoiceReflection(spokenText, zoneKey, shadowWord, reflectionEl, continueBtn);
+        else { continueBtn.style.opacity = '1'; continueBtn.style.pointerEvents = 'auto'; }
+      } else {
+        micLabel.textContent = t ? 'tap to speak' : 'toca para hablar';
+        micLabel.style.color = 'rgba(240,230,208,.28)';
+      }
+    };
+
+    recog.onerror = () => { isListening = false; micLabel.textContent = t ? 'speak' : 'hablar'; };
+
+    micOrb.addEventListener('click', startListening);
+    micOrb.addEventListener('touchend', e => { e.preventDefault(); startListening(); });
+
+    micWrap.appendChild(micOrb);
+    micWrap.appendChild(micLabel);
+    micWrap.appendChild(interimEl);
+  } else {
+    // Text fallback — small input
+    const textInput = document.createElement('input');
+    textInput.type = 'text';
+    textInput.placeholder = t ? 'describe what you feel...' : 'describe lo que sientes...';
+    textInput.style.cssText = `background:none;border:none;border-bottom:1px solid rgba(240,230,208,.14);
+      outline:none;font-family:inherit;font-size:clamp(13px,3.2vw,15px);letter-spacing:.06em;
+      color:rgba(240,230,208,.62);width:260px;padding:10px 0;text-align:center;
+      caret-color:rgba(201,169,110,.8);`;
+    textInput.addEventListener('change', () => { spokenText = textInput.value.trim(); });
+    textInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        spokenText = textInput.value.trim();
+        if (spokenText && apiKey) getVoiceReflection(spokenText, zoneKey, shadowWord, reflectionEl, continueBtn);
+        else { continueBtn.style.opacity = '1'; continueBtn.style.pointerEvents = 'auto'; }
+      }
+    });
+    micWrap.appendChild(textInput);
+  }
+
+  // Continue/skip button — always visible
+  const continueBtn = document.createElement('button');
+  continueBtn.style.cssText = `background:none;border:none;
+    font-size:clamp(10px,2.6vw,12px);letter-spacing:.2em;
+    color:rgba(240,230,208,.22);cursor:pointer;padding:10px 20px;
+    font-family:inherit;-webkit-tap-highlight-color:transparent;
+    transition:color .4s ease;`;
+  continueBtn.textContent = t ? 'skip' : 'omitir';
+  continueBtn.addEventListener('click', () => {
+    layer.style.transition = 'opacity 0.8s ease';
+    layer.style.opacity = '0';
+    if (recog) { try { recog.abort(); } catch(e){} }
+    setTimeout(() => { layer.remove(); onComplete(); }, 800);
+  });
+  continueBtn.addEventListener('touchend', e => { e.preventDefault(); continueBtn.click(); });
+
+  layer.appendChild(micWrap);
+  layer.appendChild(continueBtn);
+
+  // Reveal + auto-start mic
+  requestAnimationFrame(() => {
+    layer.style.background = 'rgba(14,12,10,0.88)';
+    setTimeout(() => {
+      prompt.style.color = 'rgba(240,230,208,.80)';
+      // Auto-start listening after prompt appears
+      if (hasSpeech) {
+        setTimeout(() => { if (!isListening && !spokenText) startListening(); }, 900);
+      }
+    }, 300);
+  });
+}
+
+async function getVoiceReflection(spokenText, zoneKey, shadowWord, reflectionEl, continueBtn) {
+  const apiKey = localStorage.getItem('field_api_key');
+  if (!apiKey) { continueBtn.style.opacity = '1'; continueBtn.style.pointerEvents = 'auto'; return; }
+
+  reflectionEl.style.color = 'rgba(201,169,110,.25)';
+  reflectionEl.textContent = '·  ·  ·';
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 60,
+        system: VOICE_SENSING_SYSTEM,
+        messages: [{ role: 'user', content: `Body location: ${zoneKey}. Shadow word: ${shadowWord}. What they said: "${spokenText}"` }]
+      })
+    });
+    const data = await res.json();
+    const reflection = data.content?.[0]?.text?.trim();
+    if (reflection) {
+      reflectionEl.textContent = reflection;
+      reflectionEl.style.color = 'rgba(201,169,110,.72)';
+    } else {
+      reflectionEl.textContent = '';
+    }
+  } catch(e) {
+    reflectionEl.textContent = '';
+  }
+
+  // Show continue after reflection appears
+  setTimeout(() => {
+    continueBtn.style.opacity = '1';
+    continueBtn.style.color = 'rgba(240,230,208,.45)';
+  }, 800);
 }
 
 // ══════════════════════════════════════
