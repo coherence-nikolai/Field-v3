@@ -2960,8 +2960,22 @@ function startBreath() {
         }
         requestAnimationFrame(() => { breathOrb = null; });
         initScene('state_chosen', spChosen);
-        const tapEl = document.getElementById('tapNext');
-        bDelay(() => { tapEl.style.transition = 'opacity 0.8s ease'; tapEl.style.opacity = '1'; }, 1600);
+
+        // AI amplifier reveals now — after morph, space for it to breathe
+        const ampEl = document.getElementById('collapseAI');
+        if (ampEl && ampEl.textContent && (ampEl.dataset.waitingForBreath === 'ready' || ampEl.dataset.waitingForBreath === '0')) {
+          ampEl.dataset.waitingForBreath = '0';
+          ampEl.style.transition = 'opacity 2s ease';
+          setTimeout(() => { ampEl.style.opacity = '1'; }, 400);
+          // tapNext appears later, after amp text has had time to land
+          bDelay(() => {
+            const tapEl = document.getElementById('tapNext');
+            if (tapEl) { tapEl.style.transition = 'opacity 0.8s ease'; tapEl.style.opacity = '1'; }
+          }, 3200);
+        } else {
+          const tapEl = document.getElementById('tapNext');
+          bDelay(() => { tapEl.style.transition = 'opacity 0.8s ease'; tapEl.style.opacity = '1'; }, 1600);
+        }
       };
     }, 800);
   };
@@ -4051,7 +4065,7 @@ function showVoiceSensingLayer(container, zoneKey, shadowWord, toneKey, onComple
   layer.style.cssText = `position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;
     align-items:center;justify-content:center;gap:clamp(18px,5vh,32px);
     background:rgba(14,12,10,0);transition:background 1.2s ease;padding:0 clamp(24px,8vw,52px);`;
-  container.appendChild(layer);
+  document.body.appendChild(layer);
 
   // Prompt text
   const prompt = document.createElement('div');
@@ -4563,20 +4577,14 @@ async function runCollapseAI(stateName, imagPrompt) {
     if (data.content && data.content[0]) {
       const text = data.content[0].text.trim();
       ampEl.textContent = text;
-      ampEl.style.transition = 'opacity 1.8s ease';
-      // If breath hasn't started cycle 2 yet, hold until it does
-      const revealAmp = () => {
-        ampEl.dataset.waitingForBreath = '0';
-        ampEl.style.opacity = '1';
-      };
+      // Mark ready — onMorphDone reveals it after the orb ascends
       if (ampEl.dataset.waitingForBreath === '1') {
-        // Poll until collapse orb has completed at least 1 cycle
-        const poll = setInterval(() => {
-          const orbDone = (breathOrb && breathOrb.cycleCount >= 1) || !breathRunning;
-          if (orbDone) { clearInterval(poll); setTimeout(revealAmp, 600); }
-        }, 500);
-      } else {
-        setTimeout(revealAmp, 100);
+        ampEl.dataset.waitingForBreath = 'ready';
+      }
+      // If API returns after morph already done (very slow network), show immediately
+      if (ampEl.dataset.waitingForBreath === '0') {
+        ampEl.style.transition = 'opacity 2s ease';
+        setTimeout(() => { ampEl.style.opacity = '1'; }, 100);
       }
     }
   } catch(e) { /* fail silently */ }

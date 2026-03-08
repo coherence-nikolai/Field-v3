@@ -140,8 +140,8 @@ const STATES = {
 };
 
 const SHADOW_STATES = {
-  en: ['Anxious','Heavy','Stuck','Numb','Scattered','Angry','Tired','Overwhelmed','Disconnected','Afraid'],
-  es: ['Angustiado','Agobiado','Bloqueado','Apagado','Disperso','Enojado','Agotado','Sobrepasado','Desconectado','Asustado']
+  en: ['Anxious','Heavy','Stuck','Numb','Scattered','Angry','Tired','Overwhelmed','Disconnected','Afraid','Confused','Uncertain'],
+  es: ['Angustiado','Agobiado','Bloqueado','Apagado','Disperso','Enojado','Agotado','Sobrepasado','Desconectado','Asustado','Confundido','Incierto']
 };
 
 const STEPS = {
