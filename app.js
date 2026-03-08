@@ -1184,6 +1184,7 @@ function goHome() {
   const fc = document.getElementById('fc');
   if (fc) { fc.style.opacity = '0'; }
   if (window._decOrb) { window._decOrb = null; }
+  companionAsked = false;
   restoreCircadianPalette(); // restore from any movement-specific palette
   fadeDrone(true, 1.5);
   particlesHidden = false; collapseStage = 0; breathRunning = false; bgDimTarget = 1;
@@ -1227,6 +1228,8 @@ function goHome() {
       setTimeout(() => { initSpParticles(12); tryDrone(); }, 200);
     }
     tryDrone();
+    // Companion check-in — shows after 3+ sessions if API key present
+    setTimeout(() => maybeShowCompanion(), 1200);
   });
   updateHomeCount();
   document.querySelectorAll('.movement').forEach(m => m.classList.remove('lit'));
@@ -2332,6 +2335,46 @@ document.getElementById('s-observe').addEventListener('touchend', e => {
 // COLLAPSE MOVEMENT
 // ══════════════════════════════════════
 let stepIndex = 0;
+let _chargeTimer = null;
+let _charging = false;
+function chargeCollapse(e) {
+  if (e.type === 'touchstart') e.preventDefault();
+  if (_charging) return;
+  _charging = true;
+  const mv = document.getElementById('mv-collapse');
+  if (mv) mv.classList.add('charging');
+  if (navigator.vibrate) navigator.vibrate(6);
+  // Auto-launch after 600ms hold (feels decisive without being fussy)
+  _chargeTimer = setTimeout(() => {
+    const mv2 = document.getElementById('mv-collapse');
+    if (mv2) { mv2.classList.remove('charging'); mv2.classList.add('crystallised'); }
+    if (navigator.vibrate) navigator.vibrate([10, 40, 18]);
+    setTimeout(() => {
+      const mv3 = document.getElementById('mv-collapse');
+      if (mv3) mv3.classList.remove('crystallised');
+      _charging = false;
+      startCollapse();
+    }, 320);
+  }, 600);
+}
+function releaseCollapse(e) {
+  if (e.type === 'touchend') e.preventDefault();
+  clearTimeout(_chargeTimer);
+  const mv = document.getElementById('mv-collapse');
+  if (mv) { mv.classList.remove('charging'); }
+  if (_charging) {
+    _charging = false;
+    // Quick tap — launch immediately
+    startCollapse();
+  }
+}
+function cancelCharge() {
+  clearTimeout(_chargeTimer);
+  _charging = false;
+  const mv = document.getElementById('mv-collapse');
+  if (mv) mv.classList.remove('charging');
+}
+
 function startCollapse() {
   if (navigator.vibrate) navigator.vibrate(18);
   initAudio();
@@ -2465,6 +2508,8 @@ function selectState(state) {
   const n = parseInt(localStorage.getItem('field_st_'+lang+'_'+state.name)||'0') + 1;
   localStorage.setItem('field_st_'+lang+'_'+state.name, n);
   totalObs++; localStorage.setItem('field_obs', totalObs);
+  // Log this session for companion check-in
+  logSession({ type: 'collapse', state: state.name, ts: Date.now() });
   document.getElementById('obsNote').innerHTML = '';
   document.getElementById('obsNote5').innerHTML = '';
   document.getElementById('closing').style.opacity = '0'; document.getElementById('closing').textContent = '';
@@ -3559,6 +3604,112 @@ function showDecBodyMap() {
 }
 
 // ══════════════════════════════════════
+// SESSION LOG — feeds companion check-in
+// ══════════════════════════════════════
+function logSession(entry) {
+  try {
+    const raw = localStorage.getItem('field_sessions');
+    const log = raw ? JSON.parse(raw) : [];
+    log.push(entry);
+    // Keep last 20
+    if (log.length > 20) log.splice(0, log.length - 20);
+    localStorage.setItem('field_sessions', JSON.stringify(log));
+  } catch(e) {}
+}
+function getSessions() {
+  try { return JSON.parse(localStorage.getItem('field_sessions') || '[]'); } catch(e) { return []; }
+}
+
+// ══════════════════════════════════════
+// COMPANION CHECK-IN — home screen
+// ══════════════════════════════════════
+const COMPANION_SYSTEM = `You are a field companion — a quiet presence that has been watching someone's practice across many sessions. You know which states they collapse into, what they witness, what patterns emerge.
+
+Your role: ask one question. One only. Something that couldn't be asked without knowing their history.
+
+Rules:
+- One question only. No preamble. No explanation.
+- The question should feel like it comes from careful observation, not from a template.
+- It should be slightly uncomfortable — the kind of question that requires honesty.
+- Field-language only: collapse, observe, witness, field, state, present, superposition.
+- Never use: mindfulness, meditation, wellbeing, journey, practice, healing, growth.
+- Under 20 words. Often under 12.
+- End with a question mark. Nothing else.`;
+
+let companionActive = false;
+let companionAsked = false;
+
+async function maybeShowCompanion() {
+  const apiKey = localStorage.getItem('field_api_key');
+  if (!apiKey) return;
+  const sessions = getSessions();
+  if (sessions.length < 3) return; // needs history to be meaningful
+
+  // Only show once per home visit, not every time
+  if (companionAsked) return;
+  companionAsked = true;
+
+  const el = document.getElementById('companion-wrap');
+  if (!el) return;
+
+  // Build a compact session summary
+  const states = sessions.filter(s => s.type === 'collapse').map(s => s.state);
+  const shadows = sessions.filter(s => s.type === 'witness').map(s => s.shadow);
+  const summary = `States collapsed into (most recent first): ${states.slice(-8).reverse().join(', ') || 'none yet'}.
+Shadows witnessed: ${shadows.slice(-5).reverse().join(', ') || 'none yet'}.
+Total sessions: ${sessions.length}.`;
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 80,
+        system: COMPANION_SYSTEM,
+        messages: [{ role: 'user', content: summary }]
+      })
+    });
+    const data = await res.json();
+    const question = data.content?.[0]?.text?.trim();
+    if (!question) return;
+
+    // Show companion question with response field
+    el.innerHTML = '';
+    const qEl = document.createElement('div');
+    qEl.style.cssText = 'font-size:clamp(15px,3.8vw,18px);font-style:italic;letter-spacing:.03em;color:rgba(240,230,208,.52);line-height:1.65;font-family:\'Cormorant Garamond\',Georgia,serif;text-align:center;';
+    qEl.textContent = question;
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = lang === 'en' ? 'respond...' : 'responder...';
+    input.style.cssText = 'background:none;border:none;border-bottom:1px solid rgba(240,230,208,.12);' +
+      'outline:none;font-family:inherit;font-size:clamp(13px,3.2vw,15px);letter-spacing:.06em;' +
+      'color:rgba(240,230,208,.62);width:100%;max-width:280px;padding:8px 0;text-align:center;' +
+      'caret-color:rgba(201,169,110,.8);margin-top:10px;';
+
+    const sendCompanion = async () => {
+      const userText = input.value.trim();
+      if (!userText) { el.style.opacity = '0'; setTimeout(() => { el.innerHTML = ''; }, 600); return; }
+      input.disabled = true;
+      input.style.opacity = '0.3';
+      // Store the exchange
+      logSession({ type: 'companion', q: question, a: userText, ts: Date.now() });
+      // Fade out
+      setTimeout(() => { el.style.transition = 'opacity 1.4s ease'; el.style.opacity = '0'; setTimeout(() => { el.innerHTML = ''; }, 1500); }, 400);
+    };
+
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') sendCompanion(); });
+
+    el.appendChild(qEl);
+    el.appendChild(input);
+    el.style.opacity = '0';
+    el.style.transition = 'opacity 1.8s ease';
+    setTimeout(() => { el.style.opacity = '1'; input.focus && input.focus(); }, 600);
+  } catch(e) {}
+}
+
+// ══════════════════════════════════════
 // ══════════════════════════════════════
 // AI INTEGRATION — Three movements
 // ══════════════════════════════════════
@@ -4127,6 +4278,8 @@ function showDecEnd() {
   const t = TRANSLATIONS[lang];
   const nd = parseInt(localStorage.getItem('field_obs_witness')||'0') + 1;
   localStorage.setItem('field_obs_witness', nd);
+  // Log this witness session
+  logSession({ type: 'witness', shadow: decStateName, ts: Date.now() });
 
   spParticles = Array.from({length:12}, (_,i) => new SpParticle(i,12));
   spParticles.forEach(p => {
