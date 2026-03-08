@@ -1949,7 +1949,8 @@ function enterObserve() {
         }
         kasinaParticle.targetAlpha = 1;
         observeParticle = null;
-      } else if (observeParticle) { observeParticle.targetAlpha = 0.9; }
+        particleVisible = true;
+      } else if (observeParticle) { observeParticle.targetAlpha = 0.9; particleVisible = true; }
     }
 
     buildObsScreen();
@@ -2768,9 +2769,12 @@ function showCollapseStage(n) {
       if (ampEl) {
         ampEl.textContent = '';
         ampEl.style.opacity = '0';
+        ampEl.style.pointerEvents = 'none';
         const cs4 = document.getElementById('cs4');
         if (cs4 && ampEl.parentNode !== cs4) cs4.appendChild(ampEl);
-        ampEl.style.cssText = 'position:fixed;bottom:clamp(80px,16vh,120px);left:50%;transform:translateX(-50%);width:90%;max-width:340px;text-align:center;z-index:20;pointer-events:none;opacity:0;color:rgba(240,230,208,.92);font-size:clamp(14px,3.8vw,17px);font-weight:300;font-style:italic;letter-spacing:.06em;line-height:1.7;transition:opacity 1.4s ease;font-family:\'Cormorant Garamond\',Georgia,serif;';
+        ampEl.style.cssText = 'position:absolute;bottom:clamp(14px,5vh,32px);left:50%;transform:translateX(-50%);width:90%;max-width:340px;text-align:center;z-index:20;pointer-events:none;opacity:0;color:rgba(240,230,208,.78);font-size:clamp(13px,3.4vw,16px);font-weight:300;font-style:italic;letter-spacing:.06em;line-height:1.7;transition:opacity 1.8s ease;font-family:\'Cormorant Garamond\',Georgia,serif;';
+        // Mark as waiting — will only show after breath cycle 1 completes
+        ampEl.dataset.waitingForBreath = '1';
       }
       const imagText = ip ? ip.textContent : '';
       if (imagText) {
@@ -2997,6 +3001,75 @@ function enterStill() {
   }
 
   showScreen('s-still', () => {
+    // ── Still canvas — crystallised kasina, slow breath, already arrived ──
+    const stillP = document.querySelector('#s-still .still-p');
+    if (stillP) {
+      const sc = document.createElement('canvas');
+      sc.id = 'still-canvas';
+      sc.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:0;opacity:0;transition:opacity 2s ease;';
+      sc.width = innerWidth; sc.height = innerHeight;
+      document.getElementById('s-still').insertBefore(sc, document.getElementById('s-still').firstChild);
+      setTimeout(() => { sc.style.opacity = '1'; }, 400);
+
+      const sx = sc.getContext('2d');
+      let stillRaf = null;
+      let stillPh = 0;
+      let stillBreathPh = 0;
+
+      const drawStill = () => {
+        if (currentMode !== 'still') { cancelAnimationFrame(stillRaf); sc.remove(); return; }
+        stillRaf = requestAnimationFrame(drawStill);
+        sx.clearRect(0, 0, sc.width, sc.height);
+
+        stillPh   += 0.006;   // slow spin
+        stillBreathPh += 0.008; // very slow breath
+
+        const cx2 = sc.width * 0.5;
+        const cy2 = sc.height * 0.38;
+        const breathScale = 1 + 0.12 * Math.sin(stillBreathPh);
+        const baseR = Math.min(sc.width, sc.height) * 0.11 * breathScale;
+        const NUM_RAYS = 8;
+
+        // Outer glow — violet/gold crystallised
+        const grad = sx.createRadialGradient(cx2, cy2, 0, cx2, cy2, baseR * 3.5);
+        grad.addColorStop(0, `rgba(210,185,235,${(0.22 * breathScale).toFixed(3)})`);
+        grad.addColorStop(0.5, `rgba(180,150,220,0.06)`);
+        grad.addColorStop(1, 'rgba(180,150,220,0)');
+        sx.fillStyle = grad;
+        sx.beginPath(); sx.arc(cx2, cy2, baseR * 3.5, 0, Math.PI * 2); sx.fill();
+
+        // Rays — crystallised star
+        sx.save();
+        sx.translate(cx2, cy2);
+        sx.rotate(stillPh);
+        for (let i = 0; i < NUM_RAYS; i++) {
+          const angle = (Math.PI * 2 / NUM_RAYS) * i;
+          const rayLen = baseR * (1.4 + 0.3 * Math.sin(stillPh * 2 + i));
+          const rayAlpha = 0.28 + 0.14 * Math.sin(stillBreathPh + i * 0.7);
+          sx.beginPath();
+          sx.strokeStyle = `rgba(210,185,235,${rayAlpha.toFixed(3)})`;
+          sx.lineWidth = 0.8;
+          sx.moveTo(Math.cos(angle) * baseR * 0.5, Math.sin(angle) * baseR * 0.5);
+          sx.lineTo(Math.cos(angle) * rayLen, Math.sin(angle) * rayLen);
+          sx.stroke();
+        }
+        sx.restore();
+
+        // Core orb
+        const coreGrad = sx.createRadialGradient(cx2, cy2, 0, cx2, cy2, baseR);
+        coreGrad.addColorStop(0, `rgba(240,225,255,${(0.72 * breathScale).toFixed(3)})`);
+        coreGrad.addColorStop(0.4, `rgba(210,185,235,${(0.45 * breathScale).toFixed(3)})`);
+        coreGrad.addColorStop(1, 'rgba(180,150,220,0)');
+        sx.fillStyle = coreGrad;
+        sx.beginPath(); sx.arc(cx2, cy2, baseR, 0, Math.PI * 2); sx.fill();
+
+        // Dot at centre
+        sx.beginPath();
+        sx.fillStyle = `rgba(245,235,255,${(0.88 * breathScale).toFixed(3)})`;
+        sx.arc(cx2, cy2, 2.8, 0, Math.PI * 2); sx.fill();
+      };
+      drawStill();
+    }
     // Whisper back the last thread line if one exists
     const lastThread = lsGet('field_thread', '');
     const whisperEl = document.getElementById('still-whisper');
@@ -3489,6 +3562,7 @@ function showBodyMap(mode, payload) {
 
     // Tap instruction below question
     const tapEl = document.createElement('div');
+    tapEl.id = 'bodymap-tap-hint';
     tapEl.style.cssText = `position:absolute;bottom:clamp(14px,5vh,32px);left:50%;
       transform:translateX(-50%);font-size:clamp(11px,2.8vw,14px);font-weight:300;
       color:rgba(240,230,208,.40);letter-spacing:.10em;text-align:center;
@@ -3712,6 +3786,12 @@ function showBodyMap(mode, payload) {
         if (somatic) return;
         somatic = true;
         activeSpot = z.key;
+
+        // Kill tap hint immediately on zone tap
+        const tapHintEl = document.getElementById('bodymap-tap-hint');
+        if (tapHintEl) { tapHintEl.style.opacity = '0'; setTimeout(() => { if (tapHintEl.parentNode) tapHintEl.remove(); }, 800); }
+        const decTH = document.getElementById('decTapHint');
+        if (decTH) decTH.textContent = '';
 
         // Zone tone + overtone
         if (audioCtx) {
@@ -4490,10 +4570,23 @@ async function runCollapseAI(stateName, imagPrompt) {
     if (data.content && data.content[0]) {
       const text = data.content[0].text.trim();
       ampEl.textContent = text;
-      ampEl.style.color = 'rgba(240,230,208,.92)';
-      ampEl.style.opacity = '0';
-      ampEl.style.transition = 'opacity 1.4s ease';
-      setTimeout(() => { ampEl.style.opacity = '1'; }, 100);
+      ampEl.style.transition = 'opacity 1.8s ease';
+      // If breath hasn't started cycle 2 yet, hold until it does
+      const revealAmp = () => {
+        ampEl.dataset.waitingForBreath = '0';
+        ampEl.style.opacity = '1';
+      };
+      if (ampEl.dataset.waitingForBreath === '1') {
+        // Poll until breath is past cycle 1 (breathCycle >= 1 means first exhale done)
+        const poll = setInterval(() => {
+          if (breathCycle >= 1 || !breathRunning) {
+            clearInterval(poll);
+            setTimeout(revealAmp, 600);
+          }
+        }, 500);
+      } else {
+        setTimeout(revealAmp, 100);
+      }
     }
   } catch(e) { /* fail silently */ }
 }
@@ -4961,14 +5054,26 @@ function startDecBreath(displayName) {
     if (cycle >= 3) {
       if (backBtn) { backBtn.style.opacity='1'; backBtn.style.pointerEvents='all'; backBtn.onclick = () => goHome(); }
       dDelay(() => {
-        hideBtext(1.2);
-        if (window._decOrb) { window._decOrb.startPhase('crystallised'); }
+        hideBtext(1.0);
         playDecohereRelease();
-      }, 600);
+      }, 400);
+      // Ascending morph — orb rises and blooms upward, violet palette
       dDelay(() => {
-        if (window._decOrb) { window._decOrb.alpha = 0; window._decOrb = null; }
-      }, 3400);
-      dDelay(() => showDecEnd(), 5200);
+        if (window._decOrb) {
+          const orb = window._decOrb;
+          // Set morph parameters for ascent
+          orb.MORPH_DURATION = 2200;
+          orb.MORPH_LIFT = innerHeight * 0.52;
+          orb.morphStartY = orb.y;
+          orb.wordTargetAlpha = 1;
+          orb.wordGlowIntensity = 1;
+          orb.startPhase('morph');
+          orb.onMorphDone = () => {
+            if (window._decOrb) { window._decOrb.alpha = 0; window._decOrb = null; }
+          };
+        }
+      }, 800);
+      dDelay(() => showDecEnd(), 4200);
       return;
     }
     cycle++;
