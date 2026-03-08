@@ -2413,6 +2413,10 @@ function startBreath() {
   const inviteLine1 = lang === 'en' ? 'breathe in all possibilities' : 'inhala todas las posibilidades';
   const inviteLine2 = (lang === 'en' ? 'exhale into ' : 'exhala hacia ') + stateName;
 
+  // Fade out the pre-breath imagination prompt
+  const imagPre = document.getElementById('imagPre');
+  if (imagPre) { imagPre.style.opacity = '0'; setTimeout(() => { if (imagPre) imagPre.style.visibility = 'hidden'; }, 1300); }
+
   // Hide DOM bp element — we use canvas now
   const bp = document.getElementById('bp'); if (bp) bp.style.opacity = '0';
   const rp = document.getElementById('bripple'); if (rp) rp.className = 'bripple';
