@@ -3101,35 +3101,36 @@ function showBodyMap(mode, payload) {
       { key:'pelvis',  centerY: 0.62 },
     ];
 
-    // Dot positions
-    const aspectCorrect = figH / figW;
-    const BODY_PTS_LOCAL = [
-      ...(() => {
-        const pts = []; const hcx=0.5, hcy=0.09, rr=0.068;
-        for(let a=0;a<Math.PI*2;a+=Math.PI/8)
-          pts.push([hcx+Math.cos(a)*rr, hcy+Math.sin(a)*rr/aspectCorrect, 1.5, 8]);
-        return pts;
-      })(),
-      [0.5, 0.155, 1.3, 6],
-      [0.26, 0.205, 1.6, 8], [0.38, 0.19, 1.3, 6], [0.5, 0.185, 1.2, 5],
-      [0.62, 0.19, 1.3, 6], [0.74, 0.205, 1.6, 8],
-      [0.21, 0.27, 1.3, 6], [0.18, 0.34, 1.2, 5], [0.16, 0.41, 1.2, 5],
-      [0.79, 0.27, 1.3, 6], [0.82, 0.34, 1.2, 5], [0.84, 0.41, 1.2, 5],
-      [0.27, 0.25, 1.2, 5], [0.25, 0.33, 1.2, 5], [0.24, 0.41, 1.2, 5],
-      [0.73, 0.25, 1.2, 5], [0.75, 0.33, 1.2, 5], [0.76, 0.41, 1.2, 5],
-      [0.5, 0.24, 1.2, 5], [0.42, 0.27, 1.1, 4], [0.58, 0.27, 1.1, 4],
-      [0.30, 0.49, 1.2, 5], [0.38, 0.495, 1.1, 4], [0.5, 0.50, 1.2, 5],
-      [0.62, 0.495, 1.1, 4], [0.70, 0.49, 1.2, 5],
-      [0.14, 0.49, 1.2, 5], [0.12, 0.56, 1.2, 5],
-      [0.86, 0.49, 1.2, 5], [0.88, 0.56, 1.2, 5],
-      [0.28, 0.585, 1.5, 7], [0.38, 0.59, 1.2, 5], [0.5, 0.595, 1.3, 5],
-      [0.62, 0.59, 1.2, 5], [0.72, 0.585, 1.5, 7],
-      [0.36, 0.65, 1.2, 5], [0.43, 0.655, 1.1, 4], [0.50, 0.65, 1.1, 4],
-      [0.57, 0.655, 1.1, 4], [0.64, 0.65, 1.2, 5],
-      [0.34, 0.72, 1.1, 4], [0.41, 0.725, 1.0, 4],
-      [0.59, 0.725, 1.0, 4], [0.66, 0.72, 1.1, 4],
-      [0.33, 0.79, 1.0, 4], [0.40, 0.795, 0.9, 3],
-      [0.60, 0.795, 0.9, 3], [0.67, 0.79, 1.0, 4],
+    // Human silhouette — path-based outline, much more legible
+    // All coordinates in normalised [0..1] space relative to figX/figY/figW/figH
+    // cx=0.5 is body centre. Drawn as connected strokes = clear human form.
+    const SILHOUETTE_PATHS = [
+      // Head (circle approximated as arc)
+      { type:'arc', cx:0.50, cy:0.085, rx:0.10, ry:0.085 },
+      // Neck
+      { type:'line', pts:[[0.45,0.165],[0.45,0.195],[0.55,0.195],[0.55,0.165]] },
+      // Shoulders + torso outline
+      { type:'poly', pts:[
+        [0.45,0.195],[0.28,0.215],[0.18,0.255],[0.17,0.31],[0.19,0.42],
+        [0.22,0.48],[0.27,0.54],[0.30,0.60],[0.31,0.66],
+        [0.33,0.74],[0.33,0.82],[0.36,0.88],[0.38,0.92],
+        [0.42,0.92],[0.43,0.86],[0.43,0.78],[0.44,0.70],[0.46,0.65],
+        [0.50,0.63],
+        [0.54,0.65],[0.56,0.70],[0.57,0.78],[0.57,0.86],[0.58,0.92],
+        [0.62,0.92],[0.64,0.88],[0.67,0.82],[0.67,0.74],
+        [0.69,0.66],[0.70,0.60],[0.73,0.54],[0.78,0.48],
+        [0.81,0.42],[0.83,0.31],[0.82,0.255],[0.72,0.215],[0.55,0.195]
+      ]},
+      // Left arm
+      { type:'poly', pts:[
+        [0.28,0.215],[0.20,0.30],[0.15,0.38],[0.12,0.46],[0.11,0.54],
+        [0.13,0.58],[0.16,0.58],[0.19,0.52],[0.21,0.44],[0.24,0.36],[0.28,0.28]
+      ]},
+      // Right arm
+      { type:'poly', pts:[
+        [0.72,0.215],[0.80,0.30],[0.85,0.38],[0.88,0.46],[0.89,0.54],
+        [0.87,0.58],[0.84,0.58],[0.81,0.52],[0.79,0.44],[0.76,0.36],[0.72,0.28]
+      ]},
     ];
 
     let activeSpot = null;
@@ -3138,40 +3139,106 @@ function showBodyMap(mode, payload) {
     let somatic = false;
     let figRafId = null;
 
+    function toCanvas(nx, ny) {
+      return [figX + nx * figW, figY + ny * figH];
+    }
+
     function drawFigure() {
       if (currentMode !== 'witness') { cancelAnimationFrame(figRafId); return; }
       fx.clearRect(0, 0, W, H);
-      glowPhase += 0.022;
-      breathPhase += 0.008; // ~0.5Hz breath rhythm
+      glowPhase  += 0.022;
+      breathPhase += 0.008;
 
       const breathPulse = 0.5 + 0.5 * Math.sin(breathPhase);
 
-      BODY_PTS_LOCAL.forEach(([nx, ny, r, gr]) => {
-        const px = figX + nx * figW;
-        const py = figY + ny * figH;
-        let inSpot = false;
-        if (activeSpot && SPOT_BANDS_Y[activeSpot]) {
-          const [lo, hi] = SPOT_BANDS_Y[activeSpot];
-          if (ny >= lo && ny <= hi) inSpot = true;
-        }
-        const pulse = inSpot
-          ? 0.55 + 0.45 * Math.sin(glowPhase * 2.0)
-          : 0.28 + 0.22 * breathPulse + 0.06 * Math.sin(glowPhase + nx * 3);
-        const alpha = inSpot ? 0.85 + 0.15 * pulse : 0.55 + 0.25 * breathPulse;
-        const glowA = inSpot ? 0.45 * pulse : 0.18 * breathPulse;
-        const glowRad = inSpot ? gr * 2.6 : gr * 1.6 + gr * 0.4 * breathPulse;
+      // Zone glow — flood the active zone with a soft radial wash
+      if (activeSpot && SPOT_BANDS_Y[activeSpot]) {
+        const [lo, hi] = SPOT_BANDS_Y[activeSpot];
+        const zoneCY = figY + ((lo + hi) / 2) * figH;
+        const zoneR  = ((hi - lo) / 2) * figH * 1.4;
+        const glowPulse = 0.5 + 0.5 * Math.sin(glowPhase * 2.0);
+        const zg = fx.createRadialGradient(figX + figW * 0.5, zoneCY, 0, figX + figW * 0.5, zoneCY, zoneR);
+        zg.addColorStop(0, `${ptGlowColor}${(0.22 * glowPulse).toFixed(3)})`);
+        zg.addColorStop(1, `${ptGlowColor}0)`);
+        fx.fillStyle = zg;
+        fx.fillRect(0, 0, W, H);
+      }
 
-        const grad = fx.createRadialGradient(px, py, 0, px, py, glowRad);
-        grad.addColorStop(0, `${ptGlowColor}${glowA.toFixed(3)})`);
-        grad.addColorStop(1, `${ptGlowColor}0)`);
-        fx.fillStyle = grad;
-        fx.beginPath(); fx.arc(px, py, glowRad, 0, Math.PI*2); fx.fill();
-        fx.globalAlpha = alpha;
-        fx.fillStyle = ptColor;
-        fx.beginPath(); fx.arc(px, py, r * (inSpot ? 2.0 : 1 + 0.25 * breathPulse), 0, Math.PI*2); fx.fill();
+      // Breathing scale — very subtle chest expansion
+      const breathScale = 1 + 0.012 * breathPulse;
+      fx.save();
+      fx.translate(figX + figW * 0.5, figY + figH * 0.5);
+      fx.scale(breathScale, breathScale);
+      fx.translate(-(figX + figW * 0.5), -(figY + figH * 0.5));
+
+      // Base alpha — pulses gently with breath
+      const baseAlpha = 0.52 + 0.18 * breathPulse;
+      const glowAlpha = 0.10 + 0.08 * breathPulse;
+      const lineW     = 1.4 + 0.4 * breathPulse;
+
+      SILHOUETTE_PATHS.forEach(path => {
+        // Is this path in the active zone?
+        let inSpot = false;
+        if (activeSpot && path.type !== 'arc') {
+          const ys = path.pts.map(p => p[1]);
+          const midY = (Math.min(...ys) + Math.max(...ys)) / 2;
+          const [lo, hi] = SPOT_BANDS_Y[activeSpot] || [0, 0];
+          if (midY >= lo && midY <= hi) inSpot = true;
+        }
+        if (activeSpot && path.type === 'arc') {
+          const [lo, hi] = SPOT_BANDS_Y[activeSpot] || [0, 0];
+          if (path.cy >= lo && path.cy <= hi) inSpot = true;
+        }
+
+        const spotPulse = 0.5 + 0.5 * Math.sin(glowPhase * 2.2);
+        const strokeAlpha = inSpot ? 0.88 + 0.12 * spotPulse : baseAlpha;
+        const glowW = inSpot ? lineW * 3.5 : lineW * 2.2;
+        const glowA = inSpot ? 0.28 * spotPulse : glowAlpha;
+
+        if (path.type === 'arc') {
+          const [cx, cy] = toCanvas(path.cx, path.cy);
+          const rx = path.rx * figW, ry = path.ry * figH;
+          // Glow pass
+          fx.globalAlpha = glowA;
+          fx.strokeStyle = ptGlowColor + '1)';
+          fx.lineWidth = glowW;
+          fx.filter = `blur(${inSpot ? 6 : 3}px)`;
+          fx.beginPath(); fx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); fx.stroke();
+          fx.filter = 'none';
+          // Crisp pass
+          fx.globalAlpha = strokeAlpha;
+          fx.strokeStyle = ptColor;
+          fx.lineWidth = lineW;
+          fx.beginPath(); fx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); fx.stroke();
+
+        } else if (path.type === 'poly' || path.type === 'line') {
+          const canvasPts = path.pts.map(([nx, ny]) => toCanvas(nx, ny));
+          // Glow pass
+          fx.globalAlpha = glowA;
+          fx.strokeStyle = ptGlowColor + '1)';
+          fx.lineWidth = glowW;
+          fx.lineJoin = 'round'; fx.lineCap = 'round';
+          fx.filter = `blur(${inSpot ? 6 : 3}px)`;
+          fx.beginPath();
+          fx.moveTo(...canvasPts[0]);
+          canvasPts.slice(1).forEach(pt => fx.lineTo(...pt));
+          if (path.type === 'poly') fx.closePath();
+          fx.stroke();
+          fx.filter = 'none';
+          // Crisp pass
+          fx.globalAlpha = strokeAlpha;
+          fx.strokeStyle = ptColor;
+          fx.lineWidth = lineW;
+          fx.beginPath();
+          fx.moveTo(...canvasPts[0]);
+          canvasPts.slice(1).forEach(pt => fx.lineTo(...pt));
+          if (path.type === 'poly') fx.closePath();
+          fx.stroke();
+        }
         fx.globalAlpha = 1;
       });
 
+      fx.restore();
       figRafId = requestAnimationFrame(drawFigure);
     }
     figRafId = requestAnimationFrame(drawFigure);
