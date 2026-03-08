@@ -2,10 +2,8 @@
 {
 "name": "FIELD",
 "short_name": "FIELD",
-"start_url": ".",
 "display": "standalone",
+"start_url": ".",
 "background_color": "#0a0805",
-"theme_color": "#0a0805",
-"description": "A contemplative field for observation and state collapse.",
-"icons": []
+"theme_color": "#0a0805"
 }

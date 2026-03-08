@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -20,7 +21,18 @@
   <p id="subtitle" class="subtitle">enter the field</p>
   <div id="meter" class="meter"></div>
   <p id="voiceText" class="voice"></p>
+  <p id="aiText" class="ai"></p>
 </div>
+
+<div id="settingsPanel" class="settings hidden">
+  <h2>AI Reflections</h2>
+  <p class="settingsText">Paste your OpenAI API key. Stored only on this device.</p>
+  <input id="apiKeyInput" placeholder="sk-..." />
+  <button id="saveKey">Save Key</button>
+  <button id="clearKey">Remove Key</button>
+</div>
+
+<button id="gear">⚙</button>
 
 <script src="app.js"></script>
 
