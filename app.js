@@ -244,28 +244,28 @@ class BreathOrb {
       // Expand to blurry superposition — all possibilities
       const p = Math.min(t / this.INHALE, 1);
       const ease = 1 - Math.pow(1 - p, 3); // ease-out cubic
-      targetRadius = 9 + 111 * ease;   // 9 → 120
-      targetBlur   = 0 + 18 * ease;    // 0 → 18
-      targetGlow   = 1 - 0.6 * ease;   // 1 → 0.4 (softer when expanded)
+      targetRadius = 9 + 51 * ease;    // 9 → 60
+      targetBlur   = 0 + 10 * ease;    // 0 → 10
+      targetGlow   = 1 - 0.4 * ease;   // 1 → 0.6
       if (t > this.INHALE) {
         this.ripples.push({ r: this.dispRadius * 0.8, alpha: 0.5 });
         this.startPhase('hold');
       }
 
     } else if (this.phase === 'hold') {
-      // Peak — suspended, diffuse, all possibilities coexisting
-      targetRadius = 120;
-      targetBlur   = 16;
-      targetGlow   = 0.35;
+      // Peak — suspended, diffuse
+      targetRadius = 60;
+      targetBlur   = 9;
+      targetGlow   = 0.5;
       if (t > this.HOLD) this.startPhase('exhale');
 
     } else if (this.phase === 'exhale') {
       // Collapse — wave function collapsing to a single defined point
       const p = Math.min(t / this.EXHALE, 1);
       const ease = p < 0.5 ? 2*p*p : 1-Math.pow(-2*p+2,2)/2; // ease-in-out
-      targetRadius = 120 - 111 * ease;  // 120 → 9
-      targetBlur   = 18  - 18  * ease;  // 18 → 0
-      targetGlow   = 0.35 + (0.9 + this.cycleCount * 0.25) * ease; // gets brighter each cycle
+      targetRadius = 60 - 51 * ease;   // 60 → 9
+      targetBlur   = 10  - 10  * ease; // 10 → 0
+      targetGlow   = 0.5 + (0.9 + this.cycleCount * 0.25) * ease;
       // Big ripple at start of exhale
       if (t < 60 && this.ripples.length === 0) {
         this.ripples.push({ r: 20, alpha: 0.7 });
@@ -2890,79 +2890,33 @@ function startDecohere() {
 function buildShadowGrid() {
   const grid = document.getElementById('shadowGrid');
   grid.innerHTML = '';
-  grid.style.cssText = 'position:relative;width:100%;flex:1;min-height:0;';
+  grid.style.cssText = 'width:100%;flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;';
 
   const en = SHADOW_STATES.en, es = SHADOW_STATES.es;
 
-  // Each word has a weight — heavier words are larger and lower, lighter ones drift higher
-  const WORD_WEIGHTS = {
-    Anxious:      { size: 1.1, y: 0.18, x: 0.20 },
-    Heavy:        { size: 1.4, y: 0.58, x: 0.55 },
-    Stuck:        { size: 1.0, y: 0.34, x: 0.22 },
-    Numb:         { size: 0.75, y: 0.10, x: 0.62 },
-    Scattered:    { size: 0.9, y: 0.08, x: 0.18 },
-    Angry:        { size: 1.25, y: 0.44, x: 0.52 },
-    Tired:        { size: 1.15, y: 0.76, x: 0.16 },
-    Overwhelmed:  { size: 1.5, y: 0.88, x: 0.42 },
-    Disconnected: { size: 0.85, y: 0.26, x: 0.40 },
-    Afraid:       { size: 1.0, y: 0.70, x: 0.55 },
-  };
-
-  // Container fades in after arrival text reads
   grid.style.opacity = '0';
   grid.style.transition = 'opacity 1.2s ease';
-  setTimeout(() => { grid.style.opacity = '1'; }, 800);
+  setTimeout(() => { grid.style.opacity = '1'; }, 600);
 
   en.forEach((name, i) => {
     const displayName = lang === 'en' ? name : es[i];
-    const w = WORD_WEIGHTS[name] || { size: 1.0, y: 0.5, x: 0.5 };
 
     const o = document.createElement('button');
     o.className = 'shadow-orb';
-
-    // Size: base 28px scaled by weight
-    const baseSize = Math.round(28 + w.size * 16);
-    const maxSize  = Math.round(baseSize * 1.4);
-    o.style.cssText = `
-      position:absolute;
-      font-size:clamp(${baseSize}px,${(w.size * 6.5).toFixed(1)}vw,${maxSize}px);
-      opacity:0;
-      left:${(w.x * 100).toFixed(1)}%;
-      top:${(w.y * 100).toFixed(1)}%;
-      transform:translate(-50%,-50%);
-      animation:none;
-    `;
-
-    // Stagger fade-in — heavier words come in slightly slower
-    const delay = 200 + i * 120 + Math.random() * 200;
-    setTimeout(() => {
-      o.style.transition = 'opacity 1.4s ease, color .3s ease, text-shadow .3s ease';
-      o.style.opacity = (0.65 + w.size * 0.15).toFixed(2);
-      // Gentle float animation per word
-      const dur = (4 + w.size * 2 + Math.random() * 2).toFixed(2);
-      const yAmp = (2 + w.size * 1.5).toFixed(1);
-      o.style.animation = `shadowWordFloat${i} ${dur}s ease-in-out infinite`;
-      // Inject keyframe
-      const kf = document.createElement('style');
-      kf.textContent = `@keyframes shadowWordFloat${i} {
-        0%,100%{transform:translate(-50%,-50%) translateY(0px);}
-        50%{transform:translate(-50%,-50%) translateY(-${yAmp}px);}
-      }`;
-      document.head.appendChild(kf);
-    }, delay);
-
+    o.style.cssText = `opacity:0;transition:opacity 1.2s ease, color .3s ease, background .3s ease;`;
     o.textContent = displayName;
+
+    setTimeout(() => { o.style.opacity = '1'; }, 80 * i + 200);
 
     const go = () => {
       if (audioCtx) playTap();
       decStateName = name; decStateNameES = es[i];
-      // Selection: chosen word pulses bright, others fade
       grid.querySelectorAll('.shadow-orb').forEach(el => {
-        el.style.transition = 'opacity 0.6s ease, color 0.6s ease';
-        el.style.opacity = el === o ? '1' : '0.08';
-        el.style.color = el === o ? 'rgba(255,160,140,1)' : '';
+        el.style.transition = 'opacity 0.5s ease, color 0.5s ease, background 0.5s ease';
+        el.style.opacity = el === o ? '1' : '0.06';
+        if (el === o) { el.style.color = 'rgba(255,155,130,1)'; el.style.background = 'rgba(210,100,80,.10)'; }
       });
-      setTimeout(() => showDecBodyMap(), 700);
+      setTimeout(() => showDecBodyMap(), 650);
     };
     o.addEventListener('click', go);
     o.addEventListener('touchend', e => { e.preventDefault(); go(); });
@@ -3083,10 +3037,11 @@ function showBodyMap(mode, payload) {
 
     // Subtle question hint at bottom
     const qEl = document.createElement('div');
-    qEl.style.cssText = `position:absolute;bottom:clamp(28px,7vw,48px);left:50%;
-      transform:translateX(-50%);font-size:clamp(13px,3.2vw,16px);font-weight:300;
-      color:rgba(240,230,208,.40);letter-spacing:.14em;text-align:center;
+    qEl.style.cssText = `position:absolute;bottom:clamp(36px,10vh,60px);left:50%;
+      transform:translateX(-50%);font-size:clamp(20px,5.5vw,28px);font-weight:300;
+      color:rgba(240,230,208,.88);letter-spacing:.03em;text-align:center;
       pointer-events:none;z-index:2;white-space:nowrap;
+      font-family:'Cormorant Garamond',Georgia,serif;font-style:italic;
       transition:opacity 0.8s ease;`;
     qEl.textContent = question;
     wrap.appendChild(qEl);
@@ -3202,9 +3157,9 @@ function showBodyMap(mode, payload) {
         const pulse = inSpot
           ? 0.55 + 0.45 * Math.sin(glowPhase * 2.0)
           : 0.28 + 0.22 * breathPulse + 0.06 * Math.sin(glowPhase + nx * 3);
-        const alpha = inSpot ? 0.85 + 0.15 * pulse : 0.32 + 0.18 * breathPulse;
-        const glowA = inSpot ? 0.45 * pulse : 0.10 * breathPulse;
-        const glowRad = inSpot ? gr * 2.6 : gr * 1.2 + gr * 0.4 * breathPulse;
+        const alpha = inSpot ? 0.85 + 0.15 * pulse : 0.55 + 0.25 * breathPulse;
+        const glowA = inSpot ? 0.45 * pulse : 0.18 * breathPulse;
+        const glowRad = inSpot ? gr * 2.6 : gr * 1.6 + gr * 0.4 * breathPulse;
 
         const grad = fx.createRadialGradient(px, py, 0, px, py, glowRad);
         grad.addColorStop(0, `${ptGlowColor}${glowA.toFixed(3)})`);
@@ -3524,6 +3479,8 @@ let chamberLastAI = '';
 function appendChamberMsg(text, role) {
   const msgs = document.getElementById('chamber-messages');
   if (!msgs) return;
+  // Remove 'opening' centering once user has responded
+  if (role === 'user') msgs.classList.remove('opening');
   const div = document.createElement('div');
   div.className = `chamber-msg ${role}`;
   div.textContent = text;
@@ -3605,6 +3562,7 @@ function startDissolutionChamber() {
   const inputEl   = document.getElementById('chamber-input');
 
   msgsEl.innerHTML = '';
+  msgsEl.classList.add('opening');
   inputEl.value = '';
   inputWrap.style.opacity = '0';
   inputWrap.style.pointerEvents = 'none';
@@ -3632,6 +3590,11 @@ function startDissolutionChamber() {
           inputWrap.style.pointerEvents = 'all';
           inputEl.focus();
           skipEl.style.opacity = '1';
+          // Show mic if speech API available
+          const micBtn = document.getElementById('chamber-mic');
+          if (micBtn && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+            micBtn.style.display = 'flex';
+          }
         }, 600);
       });
     }, 1800);
@@ -3661,12 +3624,20 @@ function chamberSend() {
   chamberExchanges++;
 
   if (chamberExchanges >= 3) {
-    // Final exchange — after AI responds, only show "carry into breath"
+    // Final exchange — AI goes quiet, "breathe" appears alone
     chamberCallAI(() => {
       setTimeout(() => {
-        skipEl.textContent = lang === 'en' ? 'carry this into breath →' : 'lleva esto a la respiración →';
-        skipEl.style.opacity = '1';
-      }, 1200);
+        const skipEl = document.getElementById('chamber-skip');
+        if (skipEl) {
+          skipEl.textContent = lang === 'en' ? 'breathe' : 'respirar';
+          skipEl.style.fontSize = 'clamp(22px,6vw,30px)';
+          skipEl.style.fontFamily = "'Cormorant Garamond',Georgia,serif";
+          skipEl.style.fontStyle = 'italic';
+          skipEl.style.letterSpacing = '.04em';
+          skipEl.style.color = 'rgba(240,230,208,.72)';
+          skipEl.style.opacity = '1';
+        }
+      }, 1400);
     });
   } else {
     chamberCallAI(() => {
@@ -3675,6 +3646,10 @@ function chamberSend() {
         inputWrap.style.pointerEvents = 'all';
         document.getElementById('chamber-input').focus();
         skipEl.style.opacity = '1';
+        const micBtn = document.getElementById('chamber-mic');
+        if (micBtn && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+          micBtn.style.display = 'flex';
+        }
       }, 600);
     });
   }
@@ -3683,6 +3658,48 @@ function chamberSend() {
 function exitChamber() {
   currentMode = 'witness';
   startDecAcknowledge();
+}
+
+let chamberRecognition = null;
+let chamberListening = false;
+
+function chamberToggleMic() {
+  if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) return;
+  const micBtn = document.getElementById('chamber-mic');
+  const inputEl = document.getElementById('chamber-input');
+
+  if (chamberListening) {
+    if (chamberRecognition) chamberRecognition.stop();
+    return;
+  }
+
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  chamberRecognition = new SR();
+  chamberRecognition.lang = lang === 'es' ? 'es-ES' : 'en-US';
+  chamberRecognition.continuous = false;
+  chamberRecognition.interimResults = true;
+
+  chamberRecognition.onstart = () => {
+    chamberListening = true;
+    if (micBtn) micBtn.classList.add('listening');
+    if (inputEl) inputEl.placeholder = '…';
+  };
+  chamberRecognition.onresult = e => {
+    const transcript = Array.from(e.results).map(r => r[0].transcript).join('');
+    if (inputEl) inputEl.value = transcript;
+    if (e.results[e.results.length - 1].isFinal) {
+      chamberListening = false;
+      if (micBtn) micBtn.classList.remove('listening');
+      if (inputEl) inputEl.placeholder = '';
+      setTimeout(() => chamberSend(), 400);
+    }
+  };
+  chamberRecognition.onerror = chamberRecognition.onend = () => {
+    chamberListening = false;
+    if (micBtn) micBtn.classList.remove('listening');
+    if (inputEl) inputEl.placeholder = '';
+  };
+  chamberRecognition.start();
 }
 
 // ══════════════════════════════════════

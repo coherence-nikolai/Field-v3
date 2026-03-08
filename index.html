@@ -381,17 +381,19 @@ html,body { margin:0;padding:0;width:100%;height:100%;background:var(--bg);
 .dec-line{font-size:var(--fh);color:var(--cream-dim);line-height:1.55;max-width:300px;font-weight:300;}
 .dec-sub{font-size:var(--fs);color:var(--cream-ghost);letter-spacing:.04em;margin-bottom:8px;}
 .shadow-grid{position:relative;width:100%;flex:1;min-height:340px;max-height:60vh;}
-/* AE3: shadow-orb — crimson/rose, theatrical absolute positioning */
-.shadow-orb{position:absolute;display:flex;align-items:center;justify-content:center;
-  padding:8px 4px;cursor:pointer;background:none;border:none;
+/* Shadow grid — ordered Collapse-style list, reddish tone */
+.shadow-orb{position:static;display:block;width:100%;max-width:320px;
+  padding:clamp(13px,3.5vw,18px) clamp(20px,5vw,32px);
+  cursor:pointer;background:none;
+  border:none;border-bottom:1px solid rgba(210,100,80,.12);
   -webkit-tap-highlight-color:transparent;touch-action:manipulation;
-  letter-spacing:.06em;
+  letter-spacing:.06em;text-align:left;
   font-family:'Cormorant Garamond',Georgia,serif;font-style:italic;font-weight:400;
-  color:rgba(210,110,100,.82);text-shadow:0 0 22px rgba(200,80,70,.22);
-  transition:color .3s ease,text-shadow .3s ease,opacity .4s ease;
-  white-space:nowrap;}
-.shadow-orb:active,.shadow-orb:hover{color:rgba(240,140,120,.96);
-  text-shadow:0 0 32px rgba(220,90,80,.6);}
+  font-size:clamp(20px,5.5vw,26px);
+  color:rgba(210,110,100,.82);
+  transition:color .3s ease, background .3s ease, opacity .4s ease;}
+.shadow-orb:first-child{border-top:1px solid rgba(210,100,80,.12);}
+.shadow-orb:active{color:rgba(255,155,130,1);background:rgba(210,100,80,.08);}
 
 /* Witness breath */
 #s-dec-breath{gap:0;text-align:center;cursor:default;overflow:hidden;}
@@ -439,18 +441,32 @@ html,body { margin:0;padding:0;width:100%;height:100%;background:var(--bg);
   color:rgba(210,110,100,.55);text-transform:lowercase;text-align:center;
   margin-bottom:clamp(20px,5vh,36px);opacity:0;transition:opacity 1.8s ease;}
 #chamber-messages{flex:1;overflow-y:auto;display:flex;flex-direction:column;
-  gap:clamp(18px,4vh,28px);padding-bottom:16px;scrollbar-width:none;}
+  gap:clamp(18px,4vh,28px);padding-bottom:16px;scrollbar-width:none;
+  justify-content:flex-end;}
 #chamber-messages::-webkit-scrollbar{display:none;}
-.chamber-msg{max-width:88%;line-height:1.65;opacity:0;transition:opacity 1.4s ease;}
-.chamber-msg.ai{font-size:clamp(17px,4.5vw,22px);font-weight:300;
+#chamber-messages.opening{justify-content:center;align-items:center;}
+.chamber-msg{max-width:88%;line-height:1.7;opacity:0;transition:opacity 1.4s ease;}
+.chamber-msg.ai{font-size:clamp(22px,6vw,30px);font-weight:300;
   font-family:'Cormorant Garamond',Georgia,serif;font-style:italic;
-  color:rgba(240,230,208,.88);letter-spacing:.02em;align-self:flex-start;}
+  color:rgba(240,230,208,.92);letter-spacing:.02em;align-self:flex-start;
+  text-align:left;}
+#chamber-messages.opening .chamber-msg.ai{
+  font-size:clamp(24px,6.5vw,34px);text-align:center;align-self:center;
+  max-width:82%;line-height:1.6;}
 .chamber-msg.user{font-size:clamp(14px,3.5vw,16px);font-weight:300;
   font-family:'Plus Jakarta Sans',sans-serif;letter-spacing:.08em;
-  color:rgba(240,230,208,.72);align-self:flex-end;text-align:right;}
+  color:rgba(240,230,208,.55);align-self:flex-end;text-align:right;}
 #chamber-input-wrap{display:flex;gap:10px;align-items:flex-end;
-  border-top:1px solid rgba(240,230,208,.08);padding-top:14px;margin-top:8px;
+  border-top:1px solid rgba(240,230,208,.12);padding-top:16px;margin-top:8px;
   opacity:0;transition:opacity 1s ease;}
+#chamber-mic{background:none;border:1px solid rgba(240,230,208,.18);
+  border-radius:50%;color:rgba(240,230,208,.55);font-size:18px;
+  width:40px;height:40px;cursor:pointer;flex-shrink:0;
+  -webkit-tap-highlight-color:transparent;transition:all .3s ease;
+  display:flex;align-items:center;justify-content:center;}
+#chamber-mic.listening{border-color:rgba(210,100,80,.7);color:rgba(240,140,120,.9);
+  box-shadow:0 0 16px rgba(210,100,80,.25);animation:micPulse 1.2s ease-in-out infinite;}
+@keyframes micPulse{0%,100%{box-shadow:0 0 16px rgba(210,100,80,.25);}50%{box-shadow:0 0 28px rgba(210,100,80,.5);}}
 #chamber-input{flex:1;background:none;border:none;outline:none;resize:none;
   font-family:'Plus Jakarta Sans',sans-serif;font-size:clamp(14px,3.5vw,16px);
   font-weight:300;letter-spacing:.06em;color:rgba(240,230,208,.75);
@@ -924,6 +940,7 @@ body.fs-large .imag-prompt{font-size:clamp(18px,4.8vw,24px);}
     <div id="chamber-context"></div>
     <div id="chamber-messages"></div>
     <div id="chamber-input-wrap">
+      <button id="chamber-mic" onclick="chamberToggleMic()" style="display:none;">🎤</button>
       <textarea id="chamber-input" placeholder="" rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();chamberSend();}"></textarea>
       <button id="chamber-send" onclick="chamberSend()">↵</button>
     </div>
