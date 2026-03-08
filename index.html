@@ -16,31 +16,24 @@
 
 <canvas id="field"></canvas>
 
-<div id="ui" class="overlay">
-  <h1 class="title">FIELD</h1>
-  <p id="subtitle" class="subtitle">enter the field</p>
-  <div id="meter" class="meter"></div>
-  <p id="voiceText" class="voice"></p>
-  <p id="aiText" class="ai"></p>
-</div>
-
-<div id="settingsPanel" class="settings hidden">
-  <h2>AI Reflections</h2>
-  <p class="settingsText">Paste your OpenAI API key. Stored only on this device.</p>
-  <input id="apiKeyInput" placeholder="sk-..." />
-  <button id="saveKey">Save Key</button>
-  <button id="clearKey">Remove Key</button>
+<div class="overlay">
+<h1 class="title">FIELD</h1>
+<p id="subtitle" class="subtitle">enter the field</p>
+<div id="meter" class="meter"></div>
+<p id="reflection" class="reflection"></p>
+<p id="aiReflection" class="ai"></p>
 </div>
 
 <button id="gear">⚙</button>
 
-<script src="app.js"></script>
+<div id="settings" class="settings hidden">
+<h3>AI Reflections</h3>
+<input id="apiKeyInput" placeholder="Paste OpenAI key"/>
+<button id="saveKey">Save Key</button>
+<button id="clearKey">Remove Key</button>
+</div>
 
-<script>
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('service-worker.js');
-}
-</script>
+<script src="app.js"></script>
 
 </body>
 </html>

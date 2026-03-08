@@ -1,9 +1,9 @@
 
 {
-"name": "FIELD",
-"short_name": "FIELD",
-"display": "standalone",
-"start_url": ".",
-"background_color": "#0a0805",
-"theme_color": "#0a0805"
+"name":"FIELD",
+"short_name":"FIELD",
+"display":"standalone",
+"start_url":".",
+"background_color":"#0a0805",
+"theme_color":"#0a0805"
 }

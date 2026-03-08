@@ -1,38 +1,37 @@
 
-const canvas = document.getElementById("field")
-const ctx = canvas.getContext("2d")
+const canvas=document.getElementById("field")
+const ctx=canvas.getContext("2d")
 
-const subtitle = document.getElementById("subtitle")
-const meter = document.getElementById("meter")
-const voiceText = document.getElementById("voiceText")
-const aiText = document.getElementById("aiText")
+const subtitle=document.getElementById("subtitle")
+const meter=document.getElementById("meter")
+const reflection=document.getElementById("reflection")
+const aiReflection=document.getElementById("aiReflection")
 
-const gear = document.getElementById("gear")
-const settingsPanel = document.getElementById("settingsPanel")
-const saveKey = document.getElementById("saveKey")
-const clearKey = document.getElementById("clearKey")
-const apiKeyInput = document.getElementById("apiKeyInput")
+const gear=document.getElementById("gear")
+const settings=document.getElementById("settings")
+const apiInput=document.getElementById("apiKeyInput")
+const saveKey=document.getElementById("saveKey")
+const clearKey=document.getElementById("clearKey")
 
-gear.onclick = () => settingsPanel.classList.toggle("hidden")
+gear.onclick=()=>settings.classList.toggle("hidden")
 
-saveKey.onclick = () => {
-localStorage.setItem("field_ai_key", apiKeyInput.value)
-settingsPanel.classList.add("hidden")
+saveKey.onclick=()=>{
+localStorage.setItem("field_ai_key",apiInput.value)
+settings.classList.add("hidden")
 }
 
-clearKey.onclick = () => {
+clearKey.onclick=()=>{
 localStorage.removeItem("field_ai_key")
-apiKeyInput.value = ""
+apiInput.value=""
 }
 
-let width, height
+let width,height
 
 function resize(){
-width = canvas.width = window.innerWidth
-height = canvas.height = window.innerHeight
+width=canvas.width=window.innerWidth
+height=canvas.height=window.innerHeight
 }
-
-window.addEventListener("resize", resize)
+window.addEventListener("resize",resize)
 resize()
 
 class Particle{
@@ -41,82 +40,85 @@ this.x=Math.random()*width
 this.y=Math.random()*height
 this.vx=(Math.random()-0.5)*0.2
 this.vy=(Math.random()-0.5)*0.2
-this.size=Math.random()*1.6+0.3
+this.size=Math.random()*1.5+0.4
 }
-
 update(){
 this.x+=this.vx
 this.y+=this.vy
-this.vx*=0.99
-this.vy*=0.99
-
 if(this.x<0)this.x=width
 if(this.x>width)this.x=0
 if(this.y<0)this.y=height
 if(this.y>height)this.y=0
 }
-
 draw(){
 ctx.beginPath()
-ctx.fillStyle="rgba(240,204,136,0.6)"
+ctx.fillStyle="rgba(240,204,136,.7)"
 ctx.arc(this.x,this.y,this.size,0,Math.PI*2)
 ctx.fill()
 }
 }
 
 const particles=[]
-for(let i=0;i<70;i++) particles.push(new Particle())
+for(let i=0;i<70;i++)particles.push(new Particle())
 
-let state="field"
-let coherence=0
-const target=10
+const STATES={
+FIELD:"field",
+OBSERVE:"observe",
+REFLECT:"reflect",
+REST:"rest"
+}
+
+let state=STATES.FIELD
+let timer=null
 
 function startObserve(){
 
-state="observe"
+state=STATES.OBSERVE
 subtitle.textContent="observe"
+reflection.textContent=""
+aiReflection.textContent=""
 meter.innerHTML=""
-voiceText.textContent=""
-aiText.textContent=""
-coherence=0
 
-for(let i=0;i<target;i++){
+let dots=10
+let count=0
+
+for(let i=0;i<dots;i++){
 let d=document.createElement("div")
 d.className="dot"
 meter.appendChild(d)
 }
 
-let timer=setInterval(()=>{
+timer=setInterval(()=>{
 
-if(state!=="observe"){clearInterval(timer);return}
+count++
+meter.children[count-1].classList.add("on")
 
-coherence++
-meter.children[coherence-1].classList.add("on")
-
-if(coherence>=target){
-
-state="collapse"
-subtitle.textContent="reflect"
-
-voiceText.textContent="tap to reflect"
-
+if(count>=dots){
 clearInterval(timer)
-
+startReflect()
 }
 
 },1000)
 }
 
-async function runAIReflection(transcript){
+function startReflect(){
+
+state=STATES.REFLECT
+subtitle.textContent="reflect"
+reflection.textContent="notice what is present"
+
+}
+
+async function runAI(){
 
 let key=localStorage.getItem("field_ai_key")
-if(!key) return
+if(!key)return
 
-aiText.textContent="reflecting..."
+aiReflection.textContent="reflecting..."
 
 try{
 
-let response=await fetch("https://api.openai.com/v1/chat/completions",{
+let r=await fetch("https://api.openai.com/v1/chat/completions",{
 method:"POST",
 headers:{
 "Content-Type":"application/json",
@@ -125,60 +127,50 @@ headers:{
 body:JSON.stringify({
 model:"gpt-4.1-mini",
 messages:[
-{role:"system",content:"You are a contemplative guide. Respond with one calm reflective sentence."},
-{role:"user",content: transcript}
+{role:"system",content:"Respond with one contemplative reflection."},
+{role:"user",content:"User completed a contemplative pause."}
 ],
 max_tokens:40
 })
 })
 
-let data=await response.json()
-
-aiText.textContent=data.choices?.[0]?.message?.content || ""
+let data=await r.json()
+aiReflection.textContent=data.choices?.[0]?.message?.content||""
 
 }catch(e){
-
-aiText.textContent="AI unavailable"
-
+aiReflection.textContent="AI unavailable"
 }
 
 }
 
-function handleInput(){
+function handleTap(){
 
-if(state==="field"){
+if(state===STATES.FIELD){
 startObserve()
 return
 }
 
-if(state==="collapse"){
+if(state===STATES.REFLECT){
 
-state="reflecting"
-
-let transcript="I feel calmer and more open."
-
-voiceText.textContent=transcript
-
-runAIReflection(transcript)
-
+runAI()
+state=STATES.REST
+subtitle.textContent="rest in the field"
 return
 }
 
-if(state==="reflecting"){
+if(state===STATES.REST){
 
-state="field"
-
+state=STATES.FIELD
 subtitle.textContent="enter the field"
 meter.innerHTML=""
-voiceText.textContent=""
-aiText.textContent=""
-
+reflection.textContent=""
+aiReflection.textContent=""
 }
 
 }
 
-document.addEventListener("touchstart", handleInput)
-document.addEventListener("mousedown", handleInput)
+document.addEventListener("touchstart",handleTap)
+document.addEventListener("mousedown",handleTap)
 
 function animate(){
 
