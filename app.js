@@ -1,24 +1,3 @@
-
-// ---- Coherence transition guard (added v3.2) ----
-function transition(fn){
-  if(isTransitioning) return;
-  isTransitioning = true;
-  try { fn(); }
-  finally {
-    setTimeout(()=>{ isTransitioning=false; },420);
-  }
-}
-
-// ---- Visibility RAF/audio stabiliser ----
-let __fieldVisible = true;
-document.addEventListener('visibilitychange', ()=>{
-  __fieldVisible = !document.hidden;
-  if(audioCtx){
-    if(document.hidden && audioCtx.state === 'running') audioCtx.suspend();
-    if(!document.hidden && audioCtx.state === 'suspended') audioCtx.resume();
-  }
-});
-
 // ═══════════════════════════════════════
 // FIELD — Unified App v3.1
 // Observe · Collapse · Witness
