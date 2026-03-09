@@ -36,6 +36,7 @@ let breathRunning = false, breathCycle = 0, curStateName = '', spChosen = 0;
 let breathOrb = null;
 let collapseStage = 0, isTransitioning = false, particlesHidden = false;
 let screenTransitionToken = 0;
+let witnessFlowToken = 0;
 let totalObs = (() => { try { return parseInt(lsGet('field_obs') || '0'); } catch(e) { return 0; } })();
 let currentMode = 'home';
 let audioEnabled = true;
@@ -3666,6 +3667,7 @@ function getDecBodyPos(spot) {
 }
 
 function startDecohere() {
+  const token = ++witnessFlowToken;
   if (navigator.vibrate) navigator.vibrate(18);
   initAudio();
   if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(()=>{});
@@ -3699,6 +3701,7 @@ function startDecohere() {
   showScreen('s-witness', () => {
     // Bring in the supporting violet field after the first line has had room to land.
     setTimeout(() => {
+      if (token !== witnessFlowToken || currentMode !== 'witness') return;
       initSpParticles(10);
       spParticles.forEach(p => {
         p.targetAlpha = 0.16 + Math.random()*0.12;
@@ -3711,19 +3714,21 @@ function startDecohere() {
       arrLine.style.transition = 'opacity 1.15s ease';
       arrSub.style.transition  = 'opacity 1.05s ease';
       if (tapHint) tapHint.style.transition = 'opacity 0.9s ease';
-      setTimeout(() => { arrLine.style.opacity = '1'; }, 180);
-      setTimeout(() => { arrSub.style.opacity  = '1'; }, 920);
+      setTimeout(() => { if (token === witnessFlowToken && currentMode === 'witness') arrLine.style.opacity = '1'; }, 180);
+      setTimeout(() => { if (token === witnessFlowToken && currentMode === 'witness') arrSub.style.opacity  = '1'; }, 920);
       // Keep the first breath invitation out of the way until the opening text has settled.
-      if (tapHint) setTimeout(() => { tapHint.style.opacity = '1'; }, 1850);
+      if (tapHint) setTimeout(() => { if (token === witnessFlowToken && currentMode === 'witness') tapHint.style.opacity = '1'; }, 1850);
     });
 
     // Delay the shadow words so the opening reads sequentially rather than stacked.
-    setTimeout(() => buildShadowGrid(), 1500);
+    setTimeout(() => { if (token === witnessFlowToken && currentMode === 'witness') buildShadowGrid(token); }, 1500);
   });
 }
 
-function buildShadowGrid() {
+function buildShadowGrid(tokenOverride) {
+  const token = tokenOverride || witnessFlowToken;
   const grid = document.getElementById('shadowGrid');
+  if (!grid || token !== witnessFlowToken || currentMode !== 'witness') return;
   grid.innerHTML = '';
   grid.style.cssText = 'width:100%;flex:1;min-height:0;display:flex;flex-wrap:wrap;' +
     'align-content:center;justify-content:center;gap:clamp(10px,2.8vw,18px);' +
@@ -3733,41 +3738,63 @@ function buildShadowGrid() {
 
   grid.style.opacity = '0';
   grid.style.transition = 'opacity 1.6s ease';
-  setTimeout(() => { if (currentMode === 'witness') grid.style.opacity = '1'; }, 320);
+  setTimeout(() => { if (token === witnessFlowToken && currentMode === 'witness') grid.style.opacity = '1'; }, 380);
 
+  let chosen = false;
   en.forEach((name, i) => {
     const displayName = lang === 'en' ? name : es[i];
 
     const o = document.createElement('button');
     o.className = 'shadow-orb';
+    o.type = 'button';
     o.style.opacity = '0';
     // Softer independent drift — enough to feel alive, not busy.
-    const dur = (3.4 + Math.random() * 1.4).toFixed(2);
+    const dur = (4.8 + Math.random() * 1.8).toFixed(2);
     const delay = (Math.random() * -4).toFixed(2);
     o.style.animationDuration = dur + 's';
     o.style.animationDelay = delay + 's';
     o.style.transition = 'opacity 1.35s ease, color .45s ease, border-color .45s ease, background .45s ease, filter .45s ease';
-    o.style.filter = 'saturate(.9)';
+    o.style.filter = 'saturate(.88)';
     o.textContent = displayName;
 
-    setTimeout(() => { if (currentMode === 'witness') o.style.opacity = '0.82'; }, 110 * i + 260);
+    setTimeout(() => { if (token === witnessFlowToken && currentMode === 'witness') o.style.opacity = '0.82'; }, 120 * i + 300);
 
     const go = () => {
+      if (chosen || token !== witnessFlowToken || currentMode !== 'witness') return;
+      chosen = true;
       if (audioCtx) playTap();
       decStateName = name; decStateNameES = es[i];
+      const line = document.getElementById('decArrivalLine');
+      const sub  = document.getElementById('decArrivalSub');
+      const hint = document.getElementById('decTapHint');
+      if (line) line.style.opacity = '0';
+      if (sub)  sub.style.opacity  = '0';
+      if (hint) hint.style.opacity = '0';
       grid.querySelectorAll('.shadow-orb').forEach(el => {
-        el.style.transition = 'opacity 0.5s ease, color 0.5s ease, border-color 0.5s ease';
-        el.style.opacity = el === o ? '1' : '0.06';
+        el.style.pointerEvents = 'none';
+        el.style.transition = 'opacity 0.55s ease, color 0.55s ease, border-color 0.55s ease, background 0.55s ease, filter 0.55s ease';
+        el.style.opacity = el === o ? '1' : '0.05';
+        el.style.filter = el === o ? 'none' : 'blur(1.6px) saturate(.72)';
         if (el === o) {
-          el.style.color = 'rgba(240,204,136,1)';
-          el.style.borderColor = 'rgba(201,169,110,.85)';
-          el.style.background = 'rgba(201,169,110,.10)';
+          el.style.color = 'rgba(236,222,210,0.98)';
+          el.style.borderColor = 'rgba(205,132,120,.50)';
+          el.style.background = 'rgba(150,78,84,.12)';
         }
       });
-      setTimeout(() => showDecBodyMap(), 700);
+      grid.style.transition = 'opacity 0.55s ease';
+      setTimeout(() => {
+        if (token !== witnessFlowToken || currentMode !== 'witness') return;
+        grid.style.opacity = '0';
+      }, 130);
+      setTimeout(() => {
+        if (token !== witnessFlowToken || currentMode !== 'witness') return;
+        showDecBodyMap();
+      }, 520);
     };
-    o.addEventListener('click', go);
-    o.addEventListener('touchend', e => { e.preventDefault(); go(); });
+    o.addEventListener('pointerup', e => { e.preventDefault(); go(); });
+    o.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); }
+    });
     grid.appendChild(o);
   });
 }
@@ -5541,26 +5568,6 @@ function startDecBreath(displayName) {
           orb.onMorphDone = () => {
             stopWitnessDrone(2.8);
             if (window._decOrb) { window._decOrb.alpha = 0; window._decOrb = null; }
-
-            // Bridge message — fills the gap before s-dec-end arrives
-            const bridge = document.createElement('div');
-            bridge.style.cssText = `position:fixed;inset:0;display:flex;align-items:center;
-              justify-content:center;z-index:30;pointer-events:none;
-              opacity:0;transition:opacity 1.8s ease;`;
-            bridge.innerHTML = `<div style="font-size:clamp(18px,5vw,26px);font-weight:300;
-              font-family:'Cormorant Garamond',Georgia,serif;font-style:italic;
-              letter-spacing:.06em;color:rgba(240,230,208,.86);text-align:center;
-              line-height:1.7;max-width:300px;padding:0 32px;">
-              ${lang === 'en' ? displayName + ' was witnessed.' : displayName + ' fue atestiguado.'}
-            </div>`;
-            document.body.appendChild(bridge);
-            requestAnimationFrame(() => { bridge.style.opacity = '1'; });
-            // Remove when dec-end screen takes over
-            setTimeout(() => {
-              bridge.style.transition = 'opacity 1.3s ease';
-              bridge.style.opacity = '0';
-              setTimeout(() => bridge.remove(), 1300);
-            }, 3000);
           };
         }
       }, 1520);
@@ -5662,14 +5669,14 @@ function showDecEnd() {
     if (endLine) endLine.classList.add('breathing-glow');
 
     // Let the close arrive in quiet first, then bring in the witnessed sentence.
-    setTimeout(() => { if (witnessed && currentMode === 'witness-end') witnessed.style.opacity = '1'; }, 2600);
+    setTimeout(() => { if (witnessed && currentMode === 'witness-end') witnessed.style.opacity = '1'; }, 3000);
     // Buttons still wait for a real contemplative pause, but no longer trap the user.
     setTimeout(() => {
       if (btns && currentMode === 'witness-end') {
         btns.style.opacity='1';
         btns.style.pointerEvents='all';
       }
-    }, 6900);
+    }, 6400);
   });
 }
 
