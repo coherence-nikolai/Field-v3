@@ -3676,34 +3676,49 @@ function startDecohere() {
   // Violet colour temperature for Witness movement
   applyDecoherePalette();
   fadeDrone(true, 1.5); spParticles = [];
-  setTimeout(() => {
-    initSpParticles(10);
-    spParticles.forEach(p => {
-      p.targetAlpha = 0.18 + Math.random()*0.15;
-      p.targetClarity = 0;
-      p.phV *= 0.4;
-    });
-  }, 300);
-  buildShadowGrid();
   const t = TRANSLATIONS[lang];
   const scr = document.getElementById('s-witness');
   if (scr) { scr.style.paddingTop = ''; scr.style.gap = ''; }
   const arrLine = document.getElementById('decArrivalLine');
   const arrSub  = document.getElementById('decArrivalSub');
-  // Set content but keep hidden — fade in after screen transition to prevent double-render jump
+  const tapHint = document.getElementById('decTapHint');
+
+  // Prepare content hidden first so Witness can enter one layer at a time.
   arrLine.textContent = t.decArrivalLine;
   arrSub.textContent  = t.decArrivalSub;
-  arrLine.style.transition = 'none'; arrLine.style.opacity = '0';
-  arrSub.style.transition  = 'none'; arrSub.style.opacity  = '0';
-  const tapHint = document.getElementById('decTapHint');
-  if (tapHint) tapHint.textContent = '';
+  arrLine.style.transition = 'none';
+  arrSub.style.transition  = 'none';
+  arrLine.style.opacity = '0';
+  arrSub.style.opacity  = '0';
+  if (tapHint) {
+    tapHint.textContent = '';
+    tapHint.style.opacity = '0';
+    tapHint.style.transition = 'none';
+  }
+
   showScreen('s-witness', () => {
+    // Bring in the supporting violet field after the first line has had room to land.
+    setTimeout(() => {
+      initSpParticles(10);
+      spParticles.forEach(p => {
+        p.targetAlpha = 0.16 + Math.random()*0.12;
+        p.targetClarity = 0;
+        p.phV *= 0.38;
+      });
+    }, 760);
+
     requestAnimationFrame(() => {
-      arrLine.style.transition = 'opacity 1.0s ease';
-      arrSub.style.transition  = 'opacity 1.0s ease';
-      setTimeout(() => { arrLine.style.opacity = '1'; }, 80);
-      setTimeout(() => { arrSub.style.opacity  = '1'; }, 320);
+      arrLine.style.transition = 'opacity 1.15s ease';
+      arrSub.style.transition  = 'opacity 1.05s ease';
+      if (tapHint) tapHint.style.transition = 'opacity 0.9s ease';
+      setTimeout(() => { arrLine.style.opacity = '1'; }, 180);
+      setTimeout(() => { arrSub.style.opacity  = '1'; }, 920);
+      // Keep the first breath invitation out of the way until the opening text has settled.
+      if (tapHint) setTimeout(() => { tapHint.style.opacity = '1'; }, 1850);
     });
+
+    // Delay the shadow words so the opening reads sequentially rather than stacked.
+    setTimeout(() => buildShadowGrid(), 1500);
   });
 }
 
@@ -3717,8 +3732,8 @@ function buildShadowGrid() {
   const en = SHADOW_STATES.en, es = SHADOW_STATES.es;
 
   grid.style.opacity = '0';
-  grid.style.transition = 'opacity 1.2s ease';
-  setTimeout(() => { grid.style.opacity = '1'; }, 600);
+  grid.style.transition = 'opacity 1.35s ease';
+  setTimeout(() => { grid.style.opacity = '1'; }, 260);
 
   en.forEach((name, i) => {
     const displayName = lang === 'en' ? name : es[i];
@@ -5532,14 +5547,15 @@ function startDecBreath(displayName) {
             requestAnimationFrame(() => { bridge.style.opacity = '1'; });
             // Remove when dec-end screen takes over
             setTimeout(() => {
-              bridge.style.transition = 'opacity 0.8s ease';
+              bridge.style.transition = 'opacity 1.2s ease';
               bridge.style.opacity = '0';
-              setTimeout(() => bridge.remove(), 800);
-            }, 1800);
+              setTimeout(() => bridge.remove(), 1200);
+            }, 2600);
           };
         }
       }, 800);
-      dDelay(() => showDecEnd(), 4200);
+      // Give the witnessed state a little longer to settle before the end screen arrives.
+      dDelay(() => showDecEnd(), 5200);
       return;
     }
     cycle++;
@@ -5600,15 +5616,16 @@ function showDecEnd() {
   spParticles = Array.from({length:12}, (_,i) => new SpParticle(i,12));
   spParticles.forEach(p => {
     p._flickering = false; // [TECH2]
-    p.x = innerWidth/2 + (Math.random()-0.5)*20;
-    p.y = innerHeight/2 + (Math.random()-0.5)*20;
+    p.x = innerWidth/2 + (Math.random()-0.5)*14;
+    p.y = innerHeight/2 + (Math.random()-0.5)*14;
     p.targetAlpha = 0;
     p.targetClarity = 0;
-    p.phV *= 0.5;
+    p.phV *= 0.22;
+    p.driftR *= 0.45;
   });
   setTimeout(() => {
-    spParticles.forEach(p => { p.targetAlpha = 0.22 + Math.random()*0.2; });
-  }, 600);
+    spParticles.forEach(p => { p.targetAlpha = 0.12 + Math.random()*0.08; });
+  }, 900);
 
   // decEndLine intentionally left empty — WITNESSED sentence is the complete close
   document.getElementById('decEndLine').textContent = '';
@@ -5620,10 +5637,11 @@ function showDecEnd() {
     const sentence = (WITNESSED[lang] && WITNESSED[lang][decStateName]) || '';
     witnessed.textContent = sentence;
     witnessed.style.opacity = '0';
+    witnessed.style.transition = 'opacity 1.8s ease';
   }
 
   const btns = document.querySelector('.dec-btns');
-  if (btns) { btns.style.opacity='0'; btns.style.transition='opacity 1.4s ease'; btns.style.pointerEvents='none'; }
+  if (btns) { btns.style.opacity='0'; btns.style.transition='opacity 1.6s ease'; btns.style.pointerEvents='none'; }
 
   const backBtn = document.getElementById('backBtn');
   if (backBtn) { backBtn.onclick = () => goHome(); }
@@ -5633,9 +5651,10 @@ function showDecEnd() {
     const endLine = document.getElementById('decEndLine');
     if (endLine) endLine.classList.add('breathing-glow');
 
-    setTimeout(() => { if (witnessed) witnessed.style.opacity = '1'; }, 1500);
-    // [AE4] Witnessed sentence breathes for longer — buttons at 12s (was 8s)
-    setTimeout(() => { if (btns) { btns.style.opacity='1'; btns.style.pointerEvents='all'; } }, 12000);
+    // Let the close arrive in quiet first, then bring in the witnessed sentence.
+    setTimeout(() => { if (witnessed) witnessed.style.opacity = '1'; }, 2200);
+    // Buttons still wait for a real contemplative pause, but no longer trap the user.
+    setTimeout(() => { if (btns) { btns.style.opacity='1'; btns.style.pointerEvents='all'; } }, 7800);
   });
 }
 
