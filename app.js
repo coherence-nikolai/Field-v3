@@ -113,7 +113,15 @@ class Pt {
     this.alpha = Math.random() * 0.22 + 0.04;
     this.targetAlpha = this.alpha;
   }
-  update() { this.y += this.vy; if (this.y < -5) this.reset(false); this.alpha += (this.targetAlpha - this.alpha) * 0.04; }
+  update() {
+    if (Date.now() < bgPauseUntil) {
+      this.alpha += (this.targetAlpha - this.alpha) * 0.04;
+      return;
+    }
+    this.y += this.vy;
+    if (this.y < -5) this.reset(false);
+    this.alpha += (this.targetAlpha - this.alpha) * 0.04;
+  }
   draw() {
     cx.globalAlpha = this.alpha * bgDimLevel; cx.fillStyle = '#f0cc88';
     cx.beginPath(); cx.arc(this.x, this.y, this.r, 0, Math.PI*2); cx.fill(); cx.globalAlpha = 1;
@@ -530,7 +538,6 @@ class KasinaParticle {
     this.crystallinityDisp = 0;  // displayed value, lerps toward crystallinity
     this.pulseRipples = [];      // tap ripple rings
     this.lastTapTime = 0;
-    this.tapPulse = 0;
   }
 
   // Called on each "I am here" tap
@@ -539,7 +546,6 @@ class KasinaParticle {
     this.stage++;
     this.crystallinity = this.stage / this.maxStage;
     this.lastTapTime = performance.now();
-    this.tapPulse = 1;
     // Add crystallisation ripple
     this.pulseRipples.push({ r: 10, alpha: 0.9, speed: 3.2 });
     if (navigator.vibrate) navigator.vibrate([12, 18, 22, 26, 30, 36, 44][Math.min(this.stage-1,6)]);
@@ -550,27 +556,27 @@ class KasinaParticle {
     this.breathPh  += 0.016;
     this.pulsePh   += 0.08;
     this.shudderPh += 0.16;
-    const isFinalStage = this.stage >= this.maxStage && this.crystallinityDisp > 0.985;
-    if (!isFinalStage) this.rayPh += 0.002 + this.crystallinityDisp * 0.0035; // rays ease in, then settle
+    if (this.crystallinityDisp >= 0.999) this.rayPh += 0;
+    else if (this.crystallinityDisp > 0.65) this.rayPh += 0.0012;
+    else this.rayPh += 0.0024 + this.crystallinityDisp * 0.002;
     this.flickPh   += 0.35;
-
-    // Shudder now gently orbits around centre instead of random jitter.
-    // This keeps the kasina feeling alive without drifting off-centre.
-    const baseShudder = isStill
-      ? 0.28 + 0.32 * (1 - this.crystallinityDisp)
-      : 0.65 + 0.6 * (1 - this.crystallinityDisp);
-    const shudderFactor = Math.max(0, 1 - this.crystallinityDisp * 0.97);
-    this.shudderX = Math.sin(this.shudderPh) * baseShudder * shudderFactor;
-    this.shudderY = Math.cos(this.shudderPh * 0.82) * baseShudder * 0.75 * shudderFactor;
-    if (isFinalStage) {
-      this.shudderX = 0;
-      this.shudderY = 0;
-    }
-    this.alpha += (this.targetAlpha - this.alpha) * 0.025;
-    this.tapPulse *= 0.88;
 
     // Smooth crystallinity toward target
     this.crystallinityDisp += (this.crystallinity - this.crystallinityDisp) * 0.04;
+
+    // Orbital micro-motion that stays centred; perfectly still when crystallised
+    const c = this.crystallinityDisp;
+    const motionScale = Math.max(0, 1 - c * 1.12);
+    const baseAmpX = isStill ? 0.55 : 1.1;
+    const baseAmpY = isStill ? 0.35 : 0.75;
+    if (c >= 0.995) {
+      this.shudderX = 0;
+      this.shudderY = 0;
+    } else {
+      this.shudderX = Math.sin(this.shudderPh) * baseAmpX * motionScale;
+      this.shudderY = Math.cos(this.shudderPh * 0.87) * baseAmpY * motionScale;
+    }
+    this.alpha += (this.targetAlpha - this.alpha) * 0.025;
 
     // Age ripples
     this.pulseRipples = this.pulseRipples.filter(rp => {
@@ -583,23 +589,23 @@ class KasinaParticle {
     const c = this.crystallinityDisp; // 0=diffuse, 1=crystallised
     const px = this.x + this.shudderX;
     const py = this.y + this.shudderY;
+    const tapEase = Math.max(0, 1 - ((performance.now() - this.lastTapTime) / 220));
 
     // Breath is dampened as crystallinity increases — stillness
-    const breathAmp = 0.26 * (1 - c * 0.78);
-    const breathFactor = 0.72 + breathAmp * Math.sin(this.breathPh);
-    const tapBoost = this.tapPulse * 0.08;
-    const microPulse   = 1 + (0.05 - c * 0.03) * Math.sin(this.pulsePh) + tapBoost;
+    const breathAmp = 0.32 * (1 - c * 0.75);
+    const breathFactor = 0.68 + breathAmp * Math.sin(this.breathPh);
+    const microPulse   = 1 + (0.07 - c * 0.05) * Math.sin(this.pulsePh) + tapEase * 0.06;
     const flicker      = 0.88 + 0.12 * Math.sin(this.flickPh);
 
     // Core grows and sharpens with crystallinity
-    const r = (6 + c * 11) * microPulse;
+    const r = (6 + c * 10) * microPulse;
 
     // Glow halos: at c=0 very large/blurry, at c=1 tight and bright
-    const blurScale  = 1 - c * 0.7;  // blur reduces
-    const glowScale  = 0.28 + c * 0.72; // glow intensity increases
-    const g1 = (18 + c * 22) * breathFactor * blurScale * (1 + tapBoost * 0.8);   // inner
-    const g2 = (64 - c * 20) * breathFactor * blurScale * (1 + tapBoost * 0.35);   // mid
-    const g3 = (132 - c * 54) * breathFactor * blurScale;  // corona
+    const blurScale  = 1 - c * 0.65;  // blur reduces
+    const glowScale  = 0.3 + c * 0.7 + tapEase * 0.12; // glow intensity increases
+    const g1 = (20 + c * 18) * breathFactor * blurScale;   // inner
+    const g2 = (72 - c * 26) * breathFactor * blurScale;   // mid
+    const g3 = (145 - c * 70) * breathFactor * blurScale;  // corona
 
     cx.save();
 
@@ -635,16 +641,16 @@ class KasinaParticle {
       cx.filter = 'none';
     }
 
-    // ── Rays — emerge later, then lock into a stable star ──
-    if (c > 0.42) {
-      const rayAlphaBase = Math.min((c - 0.42) / 0.58, 1); // 0→1 as c goes 0.42→1
+    // ── Rays — emerge later and settle into the final star ──
+    if (c > 0.34) {
+      const rayAlphaBase = (c - 0.34) / 0.66; // 0→1 as c goes 0.34→1
       const rayCount = this.NUM_RAYS;
       for (let i = 0; i < rayCount; i++) {
         const angle = this.rayPh + (Math.PI * 2 / rayCount) * i;
-        const finalLock = c > 0.96 ? 1 : 0;
-        const lenPulse = finalLock ? 1 : (0.68 + 0.32 * Math.sin(this.breathPh * 1.15 + i * 0.8));
-        const rayLen   = (g1 * 1.45 + c * 68) * lenPulse * breathFactor;
-        const rayWidth = r * (0.16 - c * 0.06);
+        const finalHold = c > 0.985 ? 1 : 0;
+        const lenPulse = finalHold ? 1 : (0.55 + 0.45 * Math.sin(this.breathPh * 1.3 + i * 0.8));
+        const rayLen   = (g1 * 1.8 + c * 80) * lenPulse * breathFactor;
+        const rayWidth = r * (0.18 - c * 0.08);
         const rayAlpha = (0.10 + c * 0.28) * this.alpha * lenPulse * flicker * rayAlphaBase;
 
         cx.save();
@@ -781,8 +787,7 @@ function loop() {
     // Smooth tilt
     tiltX += (rawTiltX - tiltX) * 0.06;
     tiltY += (rawTiltY - tiltY) * 0.06;
-    const bgPaused = performance.now() < bgPauseUntil;
-    bgPts.forEach(p => { if (!bgPaused) p.update(); p.draw(); });
+    bgPts.forEach(p => { p.update(); p.draw(); });
     if (currentMode === 'observe' && particleVisible) {
       if (obsMode === 'kasina' && kasinaParticle) {
         kasinaParticle.update(); kasinaParticle.draw();
@@ -2253,6 +2258,7 @@ function doAffirm() {
       // Full crystallisation — brief hold then coherence
       const btn2 = document.getElementById('affirmBtn');
       if (btn2) { btn2.textContent = lang === 'en' ? 'crystallised' : 'cristalizado'; btn2.style.color = 'rgba(255,248,200,.95)'; btn2.style.borderColor = 'rgba(255,240,160,.8)'; }
+      bgPauseUntil = Date.now() + 1100;
       setTimeout(() => reachObsCoherence(), 2100);
     } else {
       updateSignalDots();
@@ -2320,8 +2326,6 @@ function reachObsCoherence() {
         : 'Nombraste lo que estaba presente.\nEl campo lo recibió.\nEso es suficiente.')
     : TRANSLATIONS[lang].obsCoherenceLine;
 
-  bgPauseUntil = performance.now() + 1100;
-
   setTimeout(() => {
     particleVisible = false;
     document.getElementById('obsCohWord').textContent = cohWord;
@@ -2335,7 +2339,7 @@ function reachObsCoherence() {
     if (isNoting && sessionNoteLog.length >= 3) {
       // AI mirror removed — observe is pure attention, no feedback
     }
-  }, 2600);
+  }, 2200);
 }
 
 // ── VOICE NOTING ──
@@ -4048,7 +4052,7 @@ function showBodyMap(mode, payload) {
               });
             });
           }, 900);
-        }, 2600);
+        }, 2200);
       });
       hitBtn.addEventListener('touchend', e => { e.preventDefault(); hitBtn.click(); });
       wrap.appendChild(hitBtn);
