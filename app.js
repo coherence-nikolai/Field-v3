@@ -123,6 +123,8 @@ class Pt {
 const bgPts = Array.from({length:70}, () => new Pt());
 let bgDimTarget = 1; let bgDimLevel = 1;
 let bgPauseUntil = 0;
+let obsHelperTimer = null;
+let obsCeremonyTimer = null;
 
 // ── DEVICE TILT PARALLAX ──
 let tiltX = 0, tiltY = 0; // -1 to 1 smoothed
@@ -1744,6 +1746,8 @@ const STORM_WORDS = {
 function buildObsScreen() {
   const t = lang === 'en';
   const screen = document.getElementById('s-observe');
+  clearTimeout(obsHelperTimer); obsHelperTimer = null;
+  clearTimeout(obsCeremonyTimer); obsCeremonyTimer = null;
 
   if (obsMode === 'noting') {
     noteCount = 0;
@@ -1813,6 +1817,9 @@ function buildObsScreen() {
   const modeHint = obsMode === 'kasina'
     ? (t ? 'Hold it in attention.<br>Each touch crystallises it.' : 'Sostenlo en atención.<br>Cada toque lo cristaliza.')
     : (t ? 'One particle.<br>Just watch it.' : 'Una partícula.<br>Solo obsérvala.');
+  const helperHint = obsMode === 'kasina'
+    ? (t ? 'tap to reinforce attention' : 'toca para reforzar la atención')
+    : '';
   const hintTop = obsMode === 'kasina' ? '62%' : '42%';
   screen.innerHTML = `
     <div id="obs-hint-txt" style="position:fixed;top:${hintTop};left:50%;transform:translate(-50%,-50%);
@@ -1822,6 +1829,9 @@ function buildObsScreen() {
       <div style="font-size:clamp(15px,3.8vw,19px);letter-spacing:.10em;
         color:rgba(240,230,208,.88);line-height:1.9;">${modeHint}</div>
     </div>
+    <div id="obs-helper-txt" style="position:fixed;top:calc(${hintTop} + 78px);left:50%;transform:translateX(-50%);
+      text-align:center;opacity:0;transition:opacity 1.2s ease;z-index:20;pointer-events:none;
+      font-size:clamp(11px,2.8vw,13px);letter-spacing:.16em;color:rgba(201,169,110,.72);text-transform:uppercase;">${helperHint}</div>
     <div id="clarity-ring"></div>
     <div id="obs-timer" style="position:fixed;top:72px;left:50%;transform:translateX(-50%);
       font-size:clamp(14px,3.5vw,17px);letter-spacing:.14em;color:rgba(201,169,110,.3);
@@ -1938,6 +1948,8 @@ function startObserve() {
 function buildObsSetupScreen() {
   const t = lang === 'en';
   const screen = document.getElementById('s-observe');
+  clearTimeout(obsHelperTimer); obsHelperTimer = null;
+  clearTimeout(obsCeremonyTimer); obsCeremonyTimer = null;
   screen.innerHTML = '';
 
   const wrap = document.createElement('div');
@@ -2157,7 +2169,8 @@ function enterObserve() {
           kasinaParticle = new KasinaParticle();
           kasinaParticle.alpha = 0;
         }
-        kasinaParticle.targetAlpha = 1;
+        kasinaParticle.alpha = 0;
+        kasinaParticle.targetAlpha = 0;
         observeParticle = null;
         particleVisible = true;
       } else if (observeParticle) { observeParticle.targetAlpha = 0.9; particleVisible = true; }
@@ -2324,6 +2337,7 @@ function doAffirm() {
   if (!fieldActive || isCoherent) return;
   lastAffirmTime = Date.now();
   playAffirmSound();
+  const helper = document.getElementById('obs-helper-txt'); if (helper) helper.style.opacity = '0';
 
   if (obsMode === 'kasina' && kasinaParticle) {
     // Kasina: each tap crystallises the object one stage
@@ -2345,7 +2359,7 @@ function doAffirm() {
       // Full crystallisation — brief hold then coherence
       const btn2 = document.getElementById('affirmBtn');
       if (btn2) { btn2.textContent = lang === 'en' ? 'crystallised' : 'cristalizado'; btn2.style.color = 'rgba(255,248,200,.95)'; btn2.style.borderColor = 'rgba(255,240,160,.8)'; }
-      setTimeout(() => reachObsCoherence(), 1800);
+      setTimeout(() => reachObsCoherence(), 2200);
     } else {
       updateSignalDots();
     }
@@ -2412,7 +2426,7 @@ function reachObsCoherence() {
         : 'Nombraste lo que estaba presente.\nEl campo lo recibió.\nEso es suficiente.')
     : TRANSLATIONS[lang].obsCoherenceLine;
 
-  bgPauseUntil = performance.now() + 1000;
+  bgPauseUntil = performance.now() + 1400;
   setTimeout(() => {
     particleVisible = false;
     document.getElementById('obsCohWord').textContent = cohWord;
@@ -2426,7 +2440,7 @@ function reachObsCoherence() {
     if (isNoting && sessionNoteLog.length >= 3) {
       // AI mirror removed — observe is pure attention, no feedback
     }
-  }, 2600);
+  }, 3200);
 }
 
 // ── VOICE NOTING ──
