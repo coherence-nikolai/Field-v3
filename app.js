@@ -185,6 +185,66 @@ class SpParticle {
 }
 let spParticles = [];
 
+let collapseSeedParticle = null;
+
+function chooseSeedParticle(targetRect) {
+  if (!spParticles.length) return null;
+  const tx = targetRect.left + targetRect.width / 2;
+  const ty = targetRect.top + targetRect.height / 2;
+  let best = null, bestDist = Infinity;
+  spParticles.forEach((p, i) => {
+    const d = Math.hypot((p.x || 0) - tx, (p.y || 0) - ty);
+    if (d < bestDist) { bestDist = d; best = { p, i }; }
+  });
+  return best;
+}
+
+function seedSelectedState(st, idx, orbEl) {
+  if (isTransitioning) return;
+  isTransitioning = true;
+  const targetRect = orbEl.getBoundingClientRect();
+  const choice = chooseSeedParticle(targetRect);
+  const centerX = targetRect.left + targetRect.width / 2;
+  const centerY = targetRect.top + targetRect.height / 2;
+  const targetCx = centerX / innerWidth;
+  const targetCy = centerY / innerHeight;
+
+  document.querySelectorAll('.orb').forEach(el => {
+    el.classList.remove('collapsing', 'seeded');
+    if (el !== orbEl) el.classList.add('fading');
+  });
+  orbEl.classList.remove('fading');
+  orbEl.classList.add('seeded');
+
+  if (choice) {
+    collapseSeedParticle = choice.i;
+    spParticles.forEach((p, i) => {
+      p._flickering = false;
+      if (i === choice.i) {
+        p.targetAlpha = 1;
+        p.targetClarity = 1;
+        p.targetCx = targetCx;
+        p.targetCy = targetCy;
+        p.phV *= 0.45;
+        p.driftR *= 0.25;
+      } else {
+        p.targetAlpha = 0.03;
+        p.targetClarity = 0;
+      }
+    });
+  }
+
+  orbEl.querySelector('.oname').style.color = 'rgba(255,238,184,1)';
+  orbEl.querySelector('.oname').style.textShadow = '0 0 34px rgba(255,220,100,.88), 0 0 78px rgba(255,190,40,.42)';
+
+  setTimeout(() => {
+    orbEl.classList.remove('seeded');
+    orbEl.classList.add('collapsing');
+    spChosen = choice ? choice.i : idx;
+    selectState(st);
+  }, 540);
+}
+
 // ── BREATH ORB — pure canvas, quantum collapse breathing ──
 // Driven entirely by elapsed time in RAF loop. No CSS transitions.
 class BreathOrb {
@@ -2760,14 +2820,7 @@ function buildCollapseField() {
       if (isTransitioning) return; // [TECH3]
       o.style.filter = 'blur(0px)';
       o.style.opacity = '1';
-      o.querySelector('.oname').style.color = 'rgba(255,235,180,1)';
-      o.querySelector('.oname').style.textShadow = '0 0 40px rgba(255,210,80,.75), 0 0 80px rgba(255,190,40,.4)';
-      setTimeout(() => {
-        document.querySelectorAll('.orb').forEach(el => { el.classList.remove('collapsing'); el.classList.add('fading'); });
-        o.classList.remove('fading'); o.classList.add('collapsing');
-        spChosen = idx;
-        setTimeout(() => selectState(st), 320);
-      }, 180);
+      seedSelectedState(st, idx, o);
     };
     o.addEventListener('click', go);
     o.addEventListener('touchend', e => { e.preventDefault(); go(); });
@@ -2806,9 +2859,12 @@ function selectState(state) {
   document.getElementById('obsNote5').innerHTML = '';
   document.getElementById('closing').style.opacity = '0'; document.getElementById('closing').textContent = '';
   document.getElementById('qlabel6').textContent = t.qlabel;
-  const chosen = spParticles[spChosen%Math.max(spParticles.length,1)];
+  const chosenIndex = Number.isInteger(collapseSeedParticle) ? collapseSeedParticle : spChosen;
+  const chosen = spParticles[chosenIndex%Math.max(spParticles.length,1)];
   if (chosen) { chosen.cx=0.5; chosen.cy=0.14; chosen.x=0.5*innerWidth; chosen.y=0.14*innerHeight; }
-  initScene('state_chosen', spChosen);
+  initScene('state_chosen', chosenIndex);
+  spChosen = chosenIndex;
+  collapseSeedParticle = null;
   collapseStage = 0;
   document.querySelectorAll('.cp-stage').forEach(s => { s.classList.remove('on'); s.style.cssText=''; });
   // cs3 (imagination prompt stage) resets naturally with cp-stage cssText clear
@@ -2858,9 +2914,9 @@ function showCollapseStage(n) {
     el.style.cssText = 'opacity:0;pointer-events:none;transition:none;visibility:hidden;';
     el.classList.add('on');
     requestAnimationFrame(() => requestAnimationFrame(() => {
-      el.style.visibility = 'visible'; el.style.transition = 'opacity 1.4s ease';
+      el.style.visibility = 'visible'; el.style.transition = 'opacity 1.9s ease';
       el.style.opacity = '1'; el.style.pointerEvents = 'all';
-      setTimeout(() => { el.style.cssText = ''; }, 1450);
+      setTimeout(() => { el.style.cssText = ''; }, 1950);
     }));
     const tapEl = document.getElementById('tapNext');
     tapEl.style.transition = 'opacity 0.7s ease';
