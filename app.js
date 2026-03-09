@@ -3787,19 +3787,26 @@ function buildShadowGrid(flowToken = witnessFlowToken) {
       decStateName = name; decStateNameES = es[i];
       grid.querySelectorAll('.shadow-orb').forEach(el => {
         el.style.pointerEvents = 'none';
-        el.style.transition = 'opacity 0.58s ease, color 0.58s ease, border-color 0.58s ease, background 0.58s ease, transform 0.58s ease';
-        el.style.opacity = el === o ? '1' : '0.18';
+        el.style.transition = 'opacity 0.82s ease, color 0.62s ease, border-color 0.62s ease, background 0.62s ease, transform 0.72s ease, filter 0.72s ease';
+        el.style.opacity = el === o ? '1' : '0.28';
         if (el === o) {
           el.style.color = 'rgba(240,204,136,1)';
           el.style.borderColor = 'rgba(201,169,110,.85)';
           el.style.background = 'rgba(201,169,110,.10)';
-          el.style.transform = 'scale(1.03)';
+          el.style.transform = 'scale(1.035)';
+          el.style.filter = 'none';
         } else {
-          el.style.transform = 'scale(0.985)';
+          el.style.transform = 'scale(0.992)';
+          el.style.filter = 'blur(0.8px)';
         }
       });
-      // Let the chosen word settle before the body handoff begins.
-      setTimeout(() => { if (flowToken === witnessFlowToken && currentMode === 'witness') showDecBodyMap(flowToken); }, 820);
+      // Gentle field settle before the body handoff begins.
+      setTimeout(() => {
+        if (flowToken !== witnessFlowToken || currentMode !== 'witness') return;
+        grid.style.transition = 'opacity 0.42s ease';
+        grid.style.opacity = '0.86';
+      }, 420);
+      setTimeout(() => { if (flowToken === witnessFlowToken && currentMode === 'witness') showDecBodyMap(flowToken); }, 980);
     };
     o.addEventListener('click', go);
     o.addEventListener('touchend', e => { e.preventDefault(); go(); });
@@ -3890,10 +3897,10 @@ function showBodyMap(mode, payload, flowToken = witnessFlowToken) {
     const sub  = document.getElementById('decArrivalSub');
     const tap  = document.getElementById('decTapHint');
     const scr = document.getElementById('s-witness');
-    if (line) { line.style.transition = 'opacity 0.30s ease'; line.style.opacity = '0'; }
-    if (sub)  { sub.style.transition  = 'opacity 0.30s ease'; sub.style.opacity  = '0'; }
-    if (tap)  { tap.style.transition  = 'opacity 0.24s ease'; tap.style.opacity  = '0'; }
-    if (grid) { grid.style.transition = 'opacity 0.34s ease'; grid.style.opacity = '0'; }
+    if (line) { line.style.transition = 'opacity 0.34s ease'; line.style.opacity = '0'; }
+    if (sub)  { sub.style.transition  = 'opacity 0.34s ease'; sub.style.opacity  = '0'; }
+    if (tap)  { tap.style.transition  = 'opacity 0.28s ease'; tap.style.opacity  = '0'; }
+    if (grid) { grid.style.transition = 'opacity 0.46s ease'; grid.style.opacity = '0'; }
     if (scr) { scr.style.paddingTop = '0'; scr.style.gap = '0'; }
     setTimeout(() => {
       if (flowToken !== witnessFlowToken || currentMode !== 'witness') return;

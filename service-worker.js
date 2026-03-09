@@ -1,5 +1,5 @@
 // Cache-first — app works fully offline after first load
-const CACHE = 'field-v14-witness-handoff-homefix';
+const CACHE = 'field-v15-witness-handoff-smooth';
 const PRECACHE = [
   './',
   './index.html',
