@@ -141,17 +141,16 @@ html,body { margin:0;padding:0;width:100%;height:100%;background:var(--bg);
 .home-lang-seg{background:none;border:none;color:rgba(240,230,208,.45);font-family:inherit;font-size:clamp(11px,2.8vw,13px);letter-spacing:.18em;text-transform:uppercase;padding:10px 16px;border-radius:999px;min-width:64px;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .28s ease,color .28s ease,box-shadow .28s ease;}
 .home-lang-seg.active{color:rgba(255,240,200,.96);background:rgba(201,169,110,.16);box-shadow:0 0 16px rgba(201,169,110,.12);}
 .home-lang-seg:not(.active){opacity:.9;}
-.movement{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:10px;cursor:pointer;
-  -webkit-tap-highlight-color:transparent;padding:14px 8px;min-height:210px;
+.movement{display:flex;flex-direction:column;align-items:center;gap:10px;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;padding:14px 8px;
   transition:transform .3s ease;width:100%;max-width:150px;}
 .movement:active{transform:scale(.95);}
 .mv-glyph{font-size:clamp(36px,10vw,52px);color:rgba(201,169,110,.82);
-  transition:color .5s ease,text-shadow .5s ease,transform .6s cubic-bezier(.2,0,.2,1.4);line-height:1;
-  display:flex;align-items:center;justify-content:center;min-height:72px;width:72px;}
+  transition:color .5s ease,text-shadow .5s ease,transform .6s cubic-bezier(.2,0,.2,1.4);line-height:1;}
 .movement:hover .mv-glyph,.movement.lit .mv-glyph{
   color:var(--gold-bright);text-shadow:0 0 20px rgba(240,204,136,.4);}
 /* ↑ crystallise charge effect */
-#mv-still .mv-glyph{font-size:clamp(52px,14vw,72px);line-height:.6;color:rgba(201,169,110,.88);padding-top:4px;}
+#mv-still .mv-glyph{font-size:clamp(52px,14vw,72px);line-height:.6;color:rgba(201,169,110,.88);}
 #mv-collapse .mv-glyph{transition:color .3s ease,text-shadow .3s ease,transform .3s cubic-bezier(.2,0,.2,1.4);}
 #mv-collapse.charging .mv-glyph{
   color:rgba(255,248,200,1);
