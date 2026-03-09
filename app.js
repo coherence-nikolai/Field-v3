@@ -1401,7 +1401,7 @@ function showScreen(id, postCb) {
       if (token !== screenTransitionToken) return;
       next.style.transition = 'opacity 0.72s ease';
       next.style.opacity = '1';
-      setTimeout(() => {
+      activityTimeout(homeToken, () => {
         if (token !== screenTransitionToken) return;
         next.style.opacity = '';
         next.style.transition = '';
@@ -1612,8 +1612,8 @@ function clearGhosts() {
     setTimeout(() => { gh.innerHTML = ''; gh.style.transition = ''; }, 450); }
 }
 function goHome() {
-  closeSettings();
   const homeToken = nextActivityToken();
+  closeSettings();
   const cameFromDecohere = currentMode === 'witness-end' || currentMode === 'witness';
   currentMode = 'home';
   clearAllBreath(); clearObserver(); clearAllDec();
@@ -1724,13 +1724,13 @@ function goHome() {
           document.querySelectorAll('.movement').forEach((m, i) => {
             setTimeout(() => {
               m.classList.add('lit');
-              setTimeout(() => m.classList.remove('lit'), 1200);
+              activityTimeout(homeToken, () => m.classList.remove('lit'), 1200);
             }, i * 180);
           });
         }, 1800);
       }, 100);
     } else {
-      setTimeout(() => { if (!isCurrentActivity(homeToken)) return; initSpParticles(12); tryDrone(); }, 200);
+      activityTimeout(homeToken, () => { initSpParticles(12); tryDrone(); }, 200);
     }
     tryDrone();
     // Companion check-in — disabled on auto-show, user can access via settings
@@ -3821,58 +3821,70 @@ function startDecohere() {
 function buildShadowGrid(token = activityToken) {
   const grid = document.getElementById('shadowGrid');
   if (!grid) return;
+
   grid.innerHTML = '';
   grid.style.cssText = 'width:100%;flex:1;min-height:0;display:flex;flex-wrap:wrap;' +
     'align-content:center;justify-content:center;gap:clamp(8px,2.5vw,16px);' +
-    'padding:0 clamp(16px,5vw,32px);';
+    'padding:0 clamp(16px,5vw,32px);opacity:0;transform:translateY(14px);' +
+    'transition:opacity 0.45s ease, transform 0.45s ease;';
 
   const en = SHADOW_STATES.en, es = SHADOW_STATES.es;
-
-  grid.style.opacity = '0';
-  grid.style.transform = 'translateY(10px)';
-  grid.style.transition = 'opacity 0.42s ease, transform 0.42s ease';
-  activityFrame(token, () => {
-    if (grid && isCurrentActivity(token)) {
-      grid.style.opacity = '1';
-      grid.style.transform = 'translateY(0)';
-    }
-  });
+  let selected = false;
 
   en.forEach((name, i) => {
     const displayName = lang === 'en' ? name : es[i];
-
     const o = document.createElement('button');
     o.className = 'shadow-orb';
     const dur = (2.2 + Math.random() * 1.8).toFixed(2);
     const delay = (Math.random() * -3).toFixed(2);
     o.style.animationDuration = dur + 's';
     o.style.animationDelay = delay + 's';
-    o.style.transition = 'opacity 0.42s ease, color .3s ease, border-color .3s ease, background .3s ease, transform 0.42s ease';
-    o.style.opacity = '0';
-    o.style.transform = 'translateY(6px)';
+    o.style.opacity = '1';
+    o.style.transform = 'translateY(0)';
+    o.style.transition = 'opacity 0.35s ease, color .3s ease, border-color .3s ease, background .3s ease, transform .35s ease';
     o.textContent = displayName;
 
     const go = () => {
+      if (selected || !isCurrentActivity(token)) return;
+      selected = true;
       if (audioCtx) playTap();
-      decStateName = name; decStateNameES = es[i];
+      decStateName = name;
+      decStateNameES = es[i];
+
       grid.querySelectorAll('.shadow-orb').forEach(el => {
-        el.style.transition = 'opacity 0.5s ease, color 0.5s ease, border-color 0.5s ease';
-        el.style.opacity = el === o ? '1' : '0.06';
+        el.style.transition = 'opacity 0.35s ease, color 0.35s ease, border-color 0.35s ease, background 0.35s ease, transform 0.35s ease';
         if (el === o) {
+          el.style.opacity = '1';
+          el.style.transform = 'scale(1.02)';
           el.style.color = 'rgba(240,204,136,1)';
           el.style.borderColor = 'rgba(201,169,110,.85)';
           el.style.background = 'rgba(201,169,110,.10)';
+        } else {
+          el.style.opacity = '0.05';
+          el.style.transform = 'scale(0.985)';
+          el.style.pointerEvents = 'none';
         }
       });
-      activityTimeout(token, () => showDecBodyMap(), 260);
+
+      activityTimeout(token, () => {
+        if (!isCurrentActivity(token)) return;
+        showDecBodyMap();
+      }, 240);
     };
-    o.addEventListener('click', go);
+
+    o.addEventListener('click', go, { passive: true });
+    o.addEventListener('touchend', e => {
+      e.preventDefault();
+      go();
+    }, { passive: false });
+
     grid.appendChild(o);
-    activityFrame(token, () => {
-      if (!isCurrentActivity(token)) return;
-      o.style.opacity = '1';
-      o.style.transform = 'translateY(0)';
-    });
+  });
+
+  activityFrame(token, () => {
+    if (!isCurrentActivity(token)) return;
+    grid.style.opacity = '1';
+    grid.style.transform = 'translateY(0)';
   });
 }
 
