@@ -2089,7 +2089,8 @@ function setObsMode(mode) {
     const curAlpha = (observeParticle ? observeParticle.alpha : 0) || (kasinaParticle ? kasinaParticle.alpha : 0);
     if (mode === 'kasina' && !kasinaParticle) {
       kasinaParticle = new KasinaParticle();
-      kasinaParticle.alpha = curAlpha; kasinaParticle.targetAlpha = curAlpha;
+      kasinaParticle.alpha = curAlpha;
+      kasinaParticle.targetAlpha = fieldActive ? 0.96 : curAlpha;
       observeParticle = null;
     } else if ((mode === 'drift' || mode === 'noting') && !observeParticle) {
       observeParticle = new ObsParticle();
@@ -2153,10 +2154,9 @@ function enterObserve() {
       observeParticle = null; kasinaParticle = null; particleVisible = false;
 
       if (obsStorm) {
-        // Storm + noting — go straight to storm screen
-        buildObsScreen();
+        // Storm + noting — go straight to storm screen without flashing the noting UI first
         const obsScr = document.getElementById('s-observe');
-        if (obsScr) { obsScr.style.transition = 'none'; obsScr.style.opacity = '1'; }
+        if (obsScr) { obsScr.innerHTML = ''; obsScr.style.transition = 'none'; obsScr.style.opacity = '1'; }
         obsTimerEnd = Date.now() + obsMinutes * 60 * 1000;
         startObsTimer();
         startStormScreen();
@@ -2177,6 +2177,16 @@ function enterObserve() {
     }
 
     buildObsScreen();
+    if (obsMode === 'kasina' && kasinaParticle) {
+      kasinaParticle.alpha = 0;
+      kasinaParticle.targetAlpha = 0;
+      clearTimeout(obsCeremonyTimer);
+      obsCeremonyTimer = setTimeout(() => {
+        if (currentMode === 'observe' && obsMode === 'kasina' && kasinaParticle) {
+          kasinaParticle.targetAlpha = 0.96;
+        }
+      }, 1100);
+    }
     // Reset any opacity from setup screen fade
     const obsScr = document.getElementById('s-observe');
     if (obsScr) { obsScr.style.transition = 'none'; obsScr.style.opacity = '1'; }
