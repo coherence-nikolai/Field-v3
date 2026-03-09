@@ -13,7 +13,7 @@
 // [AE1]  obsCoherenceWord + dec-end-line get fieldTitleBreathe animation variant
 // [AE2]  Orb hover: brief full-sharp pulse before state collapse
 // [AE3]  shadow-orb base opacity raised to .82
-// [AE4]  dec-witnessed buttons delayed to 12s (was 8s)
+// [AE4]  dec-witnessed buttons re-timed for quieter landing
 // [AE5]  Crystallised breath glow shifted to deep gold rgba(240,190,60,...)
 // [AE6]  mv-hint opacity raised to .42
 // [AE7]  tapNext/taph pulse speed varies: collapse-intro 1.8s, observe 3.8s, default 2.8s
@@ -5572,7 +5572,7 @@ function startDecBreath(displayName) {
         }
       }, 1520);
       // Give the witnessed state a little longer to settle before the end screen arrives.
-      dDelay(() => showDecEnd(), 5900);
+      dDelay(() => showDecEnd(), 6200);
       return;
     }
     cycle++;
@@ -5654,7 +5654,7 @@ function showDecEnd() {
     const sentence = (WITNESSED[lang] && WITNESSED[lang][decStateName]) || '';
     witnessed.textContent = sentence;
     witnessed.style.opacity = '0';
-    witnessed.style.transition = 'opacity 1.8s ease';
+    witnessed.style.transition = 'opacity 1.95s ease';
   }
 
   const btns = document.querySelector('.dec-btns');
@@ -5669,14 +5669,14 @@ function showDecEnd() {
     if (endLine) endLine.classList.add('breathing-glow');
 
     // Let the close arrive in quiet first, then bring in the witnessed sentence.
-    setTimeout(() => { if (witnessed && currentMode === 'witness-end') witnessed.style.opacity = '1'; }, 3000);
+    setTimeout(() => { if (witnessed && currentMode === 'witness-end') witnessed.style.opacity = '1'; }, 3200);
     // Buttons still wait for a real contemplative pause, but no longer trap the user.
     setTimeout(() => {
       if (btns && currentMode === 'witness-end') {
         btns.style.opacity='1';
         btns.style.pointerEvents='all';
       }
-    }, 6400);
+    }, 6000);
   });
 }
 
