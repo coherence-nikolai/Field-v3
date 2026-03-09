@@ -1,5 +1,5 @@
 // Cache-first — app works fully offline after first load
-const CACHE = 'field-v12-homehint-removed-langcheck';
+const CACHE = 'field-v13-witness-entry-backfix';
 const PRECACHE = [
   './',
   './index.html',

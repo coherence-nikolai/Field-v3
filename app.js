@@ -36,6 +36,32 @@ let breathRunning = false, breathCycle = 0, curStateName = '', spChosen = 0;
 let breathOrb = null;
 let collapseStage = 0, isTransitioning = false, particlesHidden = false;
 let screenTransitionToken = 0;
+
+
+// Global activity guard — prevents stale delayed UI callbacks from older screens
+let activityToken = 0;
+let activityFrameIds = new Set();
+function clearActivityFrames() {
+  activityFrameIds.forEach(id => { try { cancelAnimationFrame(id); } catch(e) {} });
+  activityFrameIds.clear();
+}
+function nextActivityToken() {
+  activityToken += 1;
+  clearActivityFrames();
+  return activityToken;
+}
+function isCurrentActivity(token) {
+  return token === activityToken;
+}
+function activityFrame(token, fn) {
+  const id = requestAnimationFrame(() => {
+    activityFrameIds.delete(id);
+    if (!isCurrentActivity(token)) return;
+    try { fn(); } catch(e) {}
+  });
+  activityFrameIds.add(id);
+  return id;
+}
 let totalObs = (() => { try { return parseInt(lsGet('field_obs') || '0'); } catch(e) { return 0; } })();
 let currentMode = 'home';
 let audioEnabled = true;
@@ -1652,6 +1678,7 @@ function goHome() {
     document.querySelectorAll('.al').forEach(a => a.classList.add('on'));
     if (cameFromDecohere) {
       setTimeout(() => {
+        if (!isCurrentActivity(homeToken)) return;
         spParticles = Array.from({length:12}, (_,i) => new SpParticle(i,12));
         spParticles.forEach(p => {
           p._flickering = false;
@@ -1661,10 +1688,12 @@ function goHome() {
           p.targetClarity = 0;
         });
         setTimeout(() => {
+          if (!isCurrentActivity(homeToken)) return;
           spParticles.forEach(p => { p.targetAlpha = 0.42+Math.random()*0.22; });
         }, 300);
         // Pulse movement glyphs once — gentle acknowledgement
         setTimeout(() => {
+          if (!isCurrentActivity(homeToken)) return;
           document.querySelectorAll('.movement').forEach((m, i) => {
             setTimeout(() => {
               m.classList.add('lit');
@@ -1674,7 +1703,7 @@ function goHome() {
         }, 1800);
       }, 100);
     } else {
-      setTimeout(() => { initSpParticles(12); tryDrone(); }, 200);
+      setTimeout(() => { if (!isCurrentActivity(homeToken)) return; initSpParticles(12); tryDrone(); }, 200);
     }
     tryDrone();
     // Companion check-in — disabled on auto-show, user can access via settings
@@ -3719,6 +3748,7 @@ function startDecohere() {
   applyDecoherePalette();
   fadeDrone(true, 1.5); spParticles = [];
   setTimeout(() => {
+    if (!isCurrentActivity(witnessToken)) return;
     initSpParticles(10);
     spParticles.forEach(p => {
       p.targetAlpha = 0.18 + Math.random()*0.15;
