@@ -3676,34 +3676,49 @@ function startDecohere() {
   // Violet colour temperature for Witness movement
   applyDecoherePalette();
   fadeDrone(true, 1.5); spParticles = [];
-  setTimeout(() => {
-    initSpParticles(10);
-    spParticles.forEach(p => {
-      p.targetAlpha = 0.18 + Math.random()*0.15;
-      p.targetClarity = 0;
-      p.phV *= 0.4;
-    });
-  }, 300);
-  buildShadowGrid();
   const t = TRANSLATIONS[lang];
   const scr = document.getElementById('s-witness');
   if (scr) { scr.style.paddingTop = ''; scr.style.gap = ''; }
   const arrLine = document.getElementById('decArrivalLine');
   const arrSub  = document.getElementById('decArrivalSub');
-  // Set content but keep hidden — fade in after screen transition to prevent double-render jump
+  const tapHint = document.getElementById('decTapHint');
+
+  // Prepare content hidden first so Witness can enter one layer at a time.
   arrLine.textContent = t.decArrivalLine;
   arrSub.textContent  = t.decArrivalSub;
-  arrLine.style.transition = 'none'; arrLine.style.opacity = '0';
-  arrSub.style.transition  = 'none'; arrSub.style.opacity  = '0';
-  const tapHint = document.getElementById('decTapHint');
-  if (tapHint) tapHint.textContent = '';
+  arrLine.style.transition = 'none';
+  arrSub.style.transition  = 'none';
+  arrLine.style.opacity = '0';
+  arrSub.style.opacity  = '0';
+  if (tapHint) {
+    tapHint.textContent = '';
+    tapHint.style.opacity = '0';
+    tapHint.style.transition = 'none';
+  }
+
   showScreen('s-witness', () => {
+    // Bring in the supporting violet field after the first line has had room to land.
+    setTimeout(() => {
+      initSpParticles(10);
+      spParticles.forEach(p => {
+        p.targetAlpha = 0.16 + Math.random()*0.12;
+        p.targetClarity = 0;
+        p.phV *= 0.38;
+      });
+    }, 760);
+
     requestAnimationFrame(() => {
-      arrLine.style.transition = 'opacity 1.0s ease';
-      arrSub.style.transition  = 'opacity 1.0s ease';
-      setTimeout(() => { arrLine.style.opacity = '1'; }, 80);
-      setTimeout(() => { arrSub.style.opacity  = '1'; }, 320);
+      arrLine.style.transition = 'opacity 1.15s ease';
+      arrSub.style.transition  = 'opacity 1.05s ease';
+      if (tapHint) tapHint.style.transition = 'opacity 0.9s ease';
+      setTimeout(() => { arrLine.style.opacity = '1'; }, 180);
+      setTimeout(() => { arrSub.style.opacity  = '1'; }, 920);
+      // Keep the first breath invitation out of the way until the opening text has settled.
+      if (tapHint) setTimeout(() => { tapHint.style.opacity = '1'; }, 1850);
     });
+
+    // Delay the shadow words so the opening reads sequentially rather than stacked.
+    setTimeout(() => buildShadowGrid(), 1500);
   });
 }
 
@@ -3717,8 +3732,8 @@ function buildShadowGrid() {
   const en = SHADOW_STATES.en, es = SHADOW_STATES.es;
 
   grid.style.opacity = '0';
-  grid.style.transition = 'opacity 1.2s ease';
-  setTimeout(() => { grid.style.opacity = '1'; }, 600);
+  grid.style.transition = 'opacity 1.35s ease';
+  setTimeout(() => { grid.style.opacity = '1'; }, 260);
 
   en.forEach((name, i) => {
     const displayName = lang === 'en' ? name : es[i];
