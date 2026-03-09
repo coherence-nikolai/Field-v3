@@ -1475,7 +1475,11 @@ function settingsToggleLang() {
 // ── LANG ──
 function setLang(nextLang) {
   if (nextLang !== 'en' && nextLang !== 'es') return;
-  if (lang === nextLang) return;
+  if (lang === nextLang) {
+    applyLang();
+    updateSettingsToggles();
+    return;
+  }
   lang = nextLang;
   lsSet('field_lang', lang);
   applyLang();
@@ -1511,8 +1515,14 @@ function applyLang() {
   // Home screen lang toggle — shows the OTHER language as the option
   const hlEn = document.getElementById('homeLangEn');
   const hlEs = document.getElementById('homeLangEs');
-  if (hlEn) hlEn.classList.toggle('active', lang === 'en');
-  if (hlEs) hlEs.classList.toggle('active', lang === 'es');
+  if (hlEn) {
+    hlEn.classList.toggle('active', lang === 'en');
+    hlEn.setAttribute('aria-pressed', lang === 'en' ? 'true' : 'false');
+  }
+  if (hlEs) {
+    hlEs.classList.toggle('active', lang === 'es');
+    hlEs.setAttribute('aria-pressed', lang === 'es' ? 'true' : 'false');
+  }
   updateHomeCount();
 }
 function updateHomeCount() {
@@ -1673,17 +1683,14 @@ function goHome() {
   updateHomeCount();
   document.querySelectorAll('.movement').forEach(m => m.classList.remove('lit'));
 
-  // Guided entry hint — point new users to Observe first
+  // Guided entry hint removed — discovery stays with the user
   const hintEl = document.getElementById('guided-hint');
   const collapseCount = parseInt(lsGet('field_obs')||'0');
   if (hintEl) {
-    const t = lang === 'en';
-    if (collapseCount === 0) {
-      hintEl.textContent = t ? 'new here? · begin with ◎' : '¿nuevo aquí? · empieza con ◎';
-      setTimeout(() => { hintEl.style.opacity = '1'; }, 1800);
-    } else {
-      hintEl.style.opacity = '0';
-    }
+    hintEl.textContent = '';
+    hintEl.style.opacity = '0';
+    hintEl.style.pointerEvents = 'none';
+    hintEl.setAttribute('aria-hidden', 'true');
   }
 
   // Returning user whisper — quiet continuity, no gamification
