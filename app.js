@@ -3887,8 +3887,9 @@ function showBodyMap(mode, payload) {
     const screen = document.getElementById('s-bodymap');
     screen.innerHTML = '';
     const bwrap = document.createElement('div');
-    bwrap.className = 'bodymap-wrap';
+    bwrap.className = 'bodymap-wrap bodymap-wrap-witness';
     bwrap.id = 'bodymapWrap';
+    bwrap.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;max-width:none;margin:0;display:block;opacity:0;pointer-events:auto;';
     screen.appendChild(bwrap);
     wrap = bwrap;
 
@@ -4447,7 +4448,12 @@ function showTonePicker(container, onSelect) {
 function showVoiceSensingLayer(container, zoneKey, shadowWord, toneKey, onComplete) {
   // Destroy the fixed body map wrap so it never bleeds through
   const bmw = document.getElementById('bodymapWrap');
-  if (bmw) { bmw.style.opacity = '0'; setTimeout(() => { if (bmw.parentNode) bmw.parentNode.removeChild(bmw); }, 400); }
+  if (bmw) {
+    bmw.style.transition = 'opacity 0.18s ease';
+    bmw.style.opacity = '0';
+    bmw.style.pointerEvents = 'none';
+    setTimeout(() => { if (bmw.parentNode) bmw.parentNode.removeChild(bmw); }, 80);
+  }
   const decTapHint = document.getElementById('decTapHint');
   if (decTapHint) decTapHint.textContent = '';
   const hasSpeech = ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
@@ -4468,7 +4474,7 @@ function showVoiceSensingLayer(container, zoneKey, shadowWord, toneKey, onComple
   layer.id = 'voice-sense-layer';
   layer.style.cssText = `position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;
     align-items:center;justify-content:center;gap:clamp(24px,7vh,44px);
-    background:rgba(14,12,10,0);transition:background 1.2s ease;padding:0 clamp(24px,8vw,52px);`;
+    background:rgba(10,8,5,.86);transition:background 0.8s ease;padding:0 clamp(24px,8vw,52px);`;
   document.body.appendChild(layer);
 
   // Prompt text
