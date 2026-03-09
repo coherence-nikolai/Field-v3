@@ -35,7 +35,6 @@ let audioCtx = null, droneNodes = [], breathTimers = [], decBreathTimers = [];
 let breathRunning = false, breathCycle = 0, curStateName = '', spChosen = 0;
 let breathOrb = null;
 let collapseStage = 0, isTransitioning = false, particlesHidden = false;
-let screenTransitionToken = 0;
 let totalObs = (() => { try { return parseInt(lsGet('field_obs') || '0'); } catch(e) { return 0; } })();
 let currentMode = 'home';
 let audioEnabled = true;
@@ -122,9 +121,6 @@ class Pt {
 }
 const bgPts = Array.from({length:70}, () => new Pt());
 let bgDimTarget = 1; let bgDimLevel = 1;
-let bgPauseUntil = 0;
-let obsHelperTimer = null;
-let obsCeremonyTimer = null;
 
 // ── DEVICE TILT PARALLAX ──
 let tiltX = 0, tiltY = 0; // -1 to 1 smoothed
@@ -188,67 +184,6 @@ class SpParticle {
   }
 }
 let spParticles = [];
-
-let collapseSeedParticle = null;
-
-function chooseSeedParticle(targetRect) {
-  if (!spParticles.length) return null;
-  const tx = targetRect.left + targetRect.width / 2;
-  const ty = targetRect.top + targetRect.height / 2;
-  let best = null, bestDist = Infinity;
-  spParticles.forEach((p, i) => {
-    const d = Math.hypot((p.x || 0) - tx, (p.y || 0) - ty);
-    if (d < bestDist) { bestDist = d; best = { p, i }; }
-  });
-  return best;
-}
-
-function seedSelectedState(st, idx, orbEl) {
-  if (isTransitioning) return;
-  isTransitioning = true;
-  const targetRect = orbEl.getBoundingClientRect();
-  const choice = chooseSeedParticle(targetRect);
-  const centerX = targetRect.left + targetRect.width / 2;
-  const centerY = targetRect.top + targetRect.height / 2;
-  const targetCx = centerX / innerWidth;
-  const targetCy = centerY / innerHeight;
-
-  document.querySelectorAll('.orb').forEach(el => {
-    el.classList.remove('collapsing', 'seeded');
-    if (el !== orbEl) el.classList.add('fading');
-  });
-  orbEl.classList.remove('fading');
-  orbEl.classList.add('seeded');
-
-  if (choice) {
-    collapseSeedParticle = choice.i;
-    spParticles.forEach((p, i) => {
-      p._flickering = false;
-      if (i === choice.i) {
-        p.targetAlpha = 1;
-        p.targetClarity = 1;
-        p.targetCx = targetCx;
-        p.targetCy = targetCy;
-        p.phV *= 0.45;
-        p.driftR *= 0.25;
-      } else {
-        p.targetAlpha = 0.03;
-        p.targetClarity = 0;
-      }
-    });
-  }
-
-  orbEl.querySelector('.oname').style.color = 'rgba(255,238,184,1)';
-  orbEl.querySelector('.oname').style.textShadow = '0 0 34px rgba(255,220,100,.88), 0 0 78px rgba(255,190,40,.42)';
-
-  setTimeout(() => {
-    orbEl.classList.remove('seeded');
-    orbEl.classList.add('collapsing');
-    spChosen = choice ? choice.i : idx;
-    isTransitioning = false;
-    selectState(st);
-  }, 540);
-}
 
 // ── BREATH ORB — pure canvas, quantum collapse breathing ──
 // Driven entirely by elapsed time in RAF loop. No CSS transitions.
@@ -576,7 +511,7 @@ let clarityLevel = 0, particleVisible = false;
 class KasinaParticle {
   constructor() {
     this.x = innerWidth * 0.5;
-    this.y = innerHeight * 0.47;
+    this.y = innerHeight * 0.5;
     this.r = 6;
     this.alpha = 0; this.targetAlpha = 1;
     this.breathPh = 0;
@@ -585,8 +520,6 @@ class KasinaParticle {
     this.shudderPh = 0;
     this.rayPh = 0;
     this.flickPh = 0;
-    this.tapPulse = 0;
-    this.tapSharp = 0;
     this.NUM_RAYS = 8;
 
     // Evolution state — 0 (diffuse) to 7 (crystallised)
@@ -604,10 +537,8 @@ class KasinaParticle {
     this.stage++;
     this.crystallinity = this.stage / this.maxStage;
     this.lastTapTime = performance.now();
-    this.tapPulse = 1;
-    this.tapSharp = 1;
     // Add crystallisation ripple
-    this.pulseRipples.push({ r: 10, alpha: 0.95, speed: 3.5 });
+    this.pulseRipples.push({ r: 10, alpha: 0.9, speed: 3.2 });
     if (navigator.vibrate) navigator.vibrate([12, 18, 22, 26, 30, 36, 44][Math.min(this.stage-1,6)]);
     return this.stage >= this.maxStage; // true = complete
   }
@@ -615,31 +546,21 @@ class KasinaParticle {
   update() {
     this.breathPh  += 0.016;
     this.pulsePh   += 0.08;
-    this.shudderPh += 0.028;
+    this.shudderPh += 0.28;
+    this.rayPh     += 0.003 + this.crystallinityDisp * 0.005; // rays spin faster as crystallised
     this.flickPh   += 0.35;
+
+    // Shudder reduces as crystallinity increases — becomes perfectly still when done
+    const baseShudder = isStill
+      ? 0.6 + 0.9 * Math.sin(this.shudderPh) * Math.cos(this.shudderPh * 1.7)
+      : 2.5 + 5 * Math.random();
+    const shudderFactor = 1 - this.crystallinityDisp * 0.92;
+    this.shudderX = (Math.random() - 0.5) * baseShudder * shudderFactor;
+    this.shudderY = (Math.random() - 0.5) * baseShudder * shudderFactor;
     this.alpha += (this.targetAlpha - this.alpha) * 0.025;
 
     // Smooth crystallinity toward target
     this.crystallinityDisp += (this.crystallinity - this.crystallinityDisp) * 0.04;
-    const c = this.crystallinityDisp;
-
-    // Subtle orbital micro-motion instead of random jitter.
-    // Early stages feel alive but remain centered; full crystallisation locks perfectly still.
-    if (this.stage >= this.maxStage || c > 0.985) {
-      this.shudderX += (0 - this.shudderX) * 0.25;
-      this.shudderY += (0 - this.shudderY) * 0.25;
-    } else {
-      const calmAmp = isStill ? 0.42 : 0.9;
-      const orbitAmp = calmAmp * Math.max(0, 1 - c * 0.92);
-      this.shudderX = Math.sin(this.shudderPh * 1.05) * orbitAmp;
-      this.shudderY = Math.cos(this.shudderPh * 0.82) * orbitAmp * 0.72;
-    }
-
-    const raySpin = this.stage >= this.maxStage ? 0 : (0.002 + c * 0.0035);
-    this.rayPh += raySpin;
-
-    this.tapPulse *= 0.92;
-    this.tapSharp *= 0.88;
 
     // Age ripples
     this.pulseRipples = this.pulseRipples.filter(rp => {
@@ -656,15 +577,15 @@ class KasinaParticle {
     // Breath is dampened as crystallinity increases — stillness
     const breathAmp = 0.32 * (1 - c * 0.75);
     const breathFactor = 0.68 + breathAmp * Math.sin(this.breathPh);
-    const microPulse   = 1 + (0.07 - c * 0.05) * Math.sin(this.pulsePh) + this.tapPulse * 0.08;
+    const microPulse   = 1 + (0.07 - c * 0.05) * Math.sin(this.pulsePh);
     const flicker      = 0.88 + 0.12 * Math.sin(this.flickPh);
 
     // Core grows and sharpens with crystallinity
     const r = (6 + c * 10) * microPulse;
 
     // Glow halos: at c=0 very large/blurry, at c=1 tight and bright
-    const blurScale  = Math.max(0.18, 1 - c * 0.7 - this.tapSharp * 0.12);  // blur reduces
-    const glowScale  = 0.3 + c * 0.7 + this.tapSharp * 0.18; // glow intensity increases
+    const blurScale  = 1 - c * 0.65;  // blur reduces
+    const glowScale  = 0.3 + c * 0.7; // glow intensity increases
     const g1 = (22 + c * 18) * breathFactor * blurScale;   // inner
     const g2 = (80 - c * 30) * breathFactor * blurScale;   // mid
     const g3 = (160 - c * 80) * breathFactor * blurScale;  // corona
@@ -703,17 +624,16 @@ class KasinaParticle {
       cx.filter = 'none';
     }
 
-    // ── Rays — emerge later, then settle into the final star ──
-    if (c > 0.34) {
-      const rayAlphaBase = Math.min(1, (c - 0.34) / 0.56); // 0→1 as c goes 0.34→0.90
+    // ── Rays — emerge from stage 2 onward, sharpen fully ──
+    if (c > 0.2) {
+      const rayAlphaBase = (c - 0.2) / 0.8; // 0→1 as c goes 0.2→1
       const rayCount = this.NUM_RAYS;
       for (let i = 0; i < rayCount; i++) {
         const angle = this.rayPh + (Math.PI * 2 / rayCount) * i;
         const lenPulse = 0.55 + 0.45 * Math.sin(this.breathPh * 1.3 + i * 0.8);
-        const settled = this.stage >= this.maxStage ? 1 : 0;
-        const rayLen   = (g1 * 1.4 + c * 76 + this.tapSharp * 8) * (settled ? 1 : lenPulse) * breathFactor;
+        const rayLen   = (g1 * 1.8 + c * 80) * lenPulse * breathFactor;
         const rayWidth = r * (0.18 - c * 0.08);
-        const rayAlpha = (0.08 + c * 0.30 + this.tapSharp * 0.08) * this.alpha * (settled ? 1 : lenPulse) * flicker * rayAlphaBase;
+        const rayAlpha = (0.10 + c * 0.28) * this.alpha * lenPulse * flicker * rayAlphaBase;
 
         cx.save();
         cx.translate(px, py);
@@ -739,7 +659,7 @@ class KasinaParticle {
     cx.beginPath(); cx.arc(px, py, g1, 0, Math.PI * 2); cx.fill();
 
     // ── Hard core — defined and sharp ──
-    const coreAlpha = (0.55 + c * 0.45 + this.tapSharp * 0.12) * this.alpha * (0.85 + 0.15 * flicker);
+    const coreAlpha = (0.55 + c * 0.45) * this.alpha * (0.85 + 0.15 * flicker);
     cx.globalAlpha = coreAlpha;
     cx.fillStyle = c > 0.7 ? `rgba(255,252,230,1)` : `rgba(240,220,160,1)`;
     cx.beginPath(); cx.arc(px, py, r, 0, Math.PI * 2); cx.fill();
@@ -849,8 +769,7 @@ function loop() {
     // Smooth tilt
     tiltX += (rawTiltX - tiltX) * 0.06;
     tiltY += (rawTiltY - tiltY) * 0.06;
-    const bgPaused = performance.now() < bgPauseUntil;
-    bgPts.forEach(p => { if (!bgPaused) p.update(); p.draw(); });
+    bgPts.forEach(p => { p.update(); p.draw(); });
     if (currentMode === 'observe' && particleVisible) {
       if (obsMode === 'kasina' && kasinaParticle) {
         kasinaParticle.update(); kasinaParticle.draw();
@@ -1314,61 +1233,44 @@ function playDecohereSignature() {
 // ── SCREEN TRANSITIONS ──
 function showScreen(id, postCb) {
   resumeAudio();
-  const token = ++screenTransitionToken;
   const gh = document.getElementById('ghosts');
-  if (gh && id !== 's-collapse' && id !== 's-field') {
-    gh.style.transition = 'none';
-    gh.style.opacity = '0';
-    gh.innerHTML = '';
+  if (gh) {
+    if (id !== 's-collapse' && id !== 's-field') {
+      gh.style.transition = 'none';
+      gh.style.opacity = '0';
+      gh.innerHTML = '';
+    }
   }
-
   const next = document.getElementById(id);
-  if (!next) { if (postCb) postCb(); return; }
-  const activeScreens = Array.from(document.querySelectorAll('.screen.active'));
-  const current = activeScreens.find(el => el !== next) || null;
+  const current = document.querySelector('.screen.active');
+  if (current === next) { if (postCb) postCb(); return; }
 
-  if (current === next && activeScreens.length === 1) {
-    if (postCb) requestAnimationFrame(postCb);
-    return;
-  }
-
-  const activateNext = () => {
-    if (token !== screenTransitionToken) return;
-    activeScreens.forEach(el => {
-      if (el !== next) {
-        el.classList.remove('active');
-        el.style.opacity = '';
-        el.style.transition = '';
-      }
-    });
-    next.classList.add('active');
+  const showNext = () => {
     next.style.opacity = '0';
     next.style.transition = 'none';
-    requestAnimationFrame(() => {
-      if (token !== screenTransitionToken) return;
-      next.style.transition = 'opacity 0.72s ease';
+    next.classList.add('active');
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      next.style.transition = 'opacity 0.8s ease';
       next.style.opacity = '1';
       setTimeout(() => {
-        if (token !== screenTransitionToken) return;
         next.style.opacity = '';
         next.style.transition = '';
         if (postCb) postCb();
-      }, 740);
-    });
+      }, 820);
+    }));
   };
 
   if (current) {
-    current.style.transition = 'opacity 0.42s ease';
+    current.style.transition = 'opacity 0.55s ease';
     current.style.opacity = '0';
     setTimeout(() => {
-      if (token !== screenTransitionToken) return;
       current.classList.remove('active');
       current.style.opacity = '';
       current.style.transition = '';
-      activateNext();
-    }, 430);
+      showNext();
+    }, 560);
   } else {
-    activateNext();
+    showNext();
   }
 }
 
@@ -1469,26 +1371,19 @@ function settingsToggleFont() {
   updateSettingsToggles();
 }
 function settingsToggleLang() {
-  setLang(lang === 'en' ? 'es' : 'en');
-}
-
-// ── LANG ──
-function setLang(nextLang) {
-  if (nextLang !== 'en' && nextLang !== 'es') return;
-  if (lang === nextLang) return;
-  lang = nextLang;
+  lang = lang === 'en' ? 'es' : 'en';
   lsSet('field_lang', lang);
   applyLang();
   updateSettingsToggles();
 }
-function toggleLang() {
 
+// ── LANG ──
+function toggleLang() {
   lang = lang === 'en' ? 'es' : 'en';
   lsSet('field_lang', lang);
   applyLang();
 }
 function applyLang() {
-  document.documentElement.lang = lang;
   const t = TRANSLATIONS[lang];
   document.getElementById('homeFieldSub').textContent = t.fieldSub;
   document.getElementById('mvObserveLabel').textContent = t.observeLabel;
@@ -1509,10 +1404,8 @@ function applyLang() {
   document.getElementById('obsCohTap').textContent = t.obsCoherenceTap;
   document.getElementById('revisitBtn').textContent = 'revisit introduction';
   // Home screen lang toggle — shows the OTHER language as the option
-  const hlEn = document.getElementById('homeLangEn');
-  const hlEs = document.getElementById('homeLangEs');
-  if (hlEn) hlEn.classList.toggle('active', lang === 'en');
-  if (hlEs) hlEs.classList.toggle('active', lang === 'es');
+  const hlb = document.getElementById('homeLangBtn');
+  if (hlb) hlb.textContent = lang === 'en' ? 'español' : 'english';
   updateHomeCount();
 }
 function updateHomeCount() {
@@ -1599,7 +1492,7 @@ function goHome() {
     const stillWhisper = document.getElementById('still-whisper');
     if (stillWhisper) { stillWhisper.style.opacity = '0'; }
     const stillTxt = document.getElementById('stillTxt');
-    if (stillTxt) { stillTxt.style.transition = ''; stillTxt.style.opacity = ''; }
+    if (stillTxt) { stillTxt.style.opacity = ''; }
     const stillOrbZone = document.getElementById('still-orb-zone');
     if (stillOrbZone) { stillOrbZone.innerHTML = ''; stillOrbZone.style.opacity = ''; }
     const stillThreadWrap = document.getElementById('still-thread-wrap');
@@ -1746,8 +1639,6 @@ const STORM_WORDS = {
 function buildObsScreen() {
   const t = lang === 'en';
   const screen = document.getElementById('s-observe');
-  clearTimeout(obsHelperTimer); obsHelperTimer = null;
-  clearTimeout(obsCeremonyTimer); obsCeremonyTimer = null;
 
   if (obsMode === 'noting') {
     noteCount = 0;
@@ -1817,9 +1708,6 @@ function buildObsScreen() {
   const modeHint = obsMode === 'kasina'
     ? (t ? 'Hold it in attention.<br>Each touch crystallises it.' : 'Sostenlo en atención.<br>Cada toque lo cristaliza.')
     : (t ? 'One particle.<br>Just watch it.' : 'Una partícula.<br>Solo obsérvala.');
-  const helperHint = obsMode === 'kasina'
-    ? (t ? 'tap to reinforce attention' : 'toca para reforzar la atención')
-    : '';
   const hintTop = obsMode === 'kasina' ? '62%' : '42%';
   screen.innerHTML = `
     <div id="obs-hint-txt" style="position:fixed;top:${hintTop};left:50%;transform:translate(-50%,-50%);
@@ -1829,9 +1717,6 @@ function buildObsScreen() {
       <div style="font-size:clamp(15px,3.8vw,19px);letter-spacing:.10em;
         color:rgba(240,230,208,.88);line-height:1.9;">${modeHint}</div>
     </div>
-    <div id="obs-helper-txt" style="position:fixed;top:calc(${hintTop} + 78px);left:50%;transform:translateX(-50%);
-      text-align:center;opacity:0;transition:opacity 1.2s ease;z-index:20;pointer-events:none;
-      font-size:clamp(11px,2.8vw,13px);letter-spacing:.16em;color:rgba(201,169,110,.72);text-transform:uppercase;">${helperHint}</div>
     <div id="clarity-ring"></div>
     <div id="obs-timer" style="position:fixed;top:72px;left:50%;transform:translateX(-50%);
       font-size:clamp(14px,3.5vw,17px);letter-spacing:.14em;color:rgba(201,169,110,.3);
@@ -1948,8 +1833,6 @@ function startObserve() {
 function buildObsSetupScreen() {
   const t = lang === 'en';
   const screen = document.getElementById('s-observe');
-  clearTimeout(obsHelperTimer); obsHelperTimer = null;
-  clearTimeout(obsCeremonyTimer); obsCeremonyTimer = null;
   screen.innerHTML = '';
 
   const wrap = document.createElement('div');
@@ -2089,8 +1972,7 @@ function setObsMode(mode) {
     const curAlpha = (observeParticle ? observeParticle.alpha : 0) || (kasinaParticle ? kasinaParticle.alpha : 0);
     if (mode === 'kasina' && !kasinaParticle) {
       kasinaParticle = new KasinaParticle();
-      kasinaParticle.alpha = curAlpha;
-      kasinaParticle.targetAlpha = fieldActive ? 0.96 : curAlpha;
+      kasinaParticle.alpha = curAlpha; kasinaParticle.targetAlpha = curAlpha;
       observeParticle = null;
     } else if ((mode === 'drift' || mode === 'noting') && !observeParticle) {
       observeParticle = new ObsParticle();
@@ -2154,9 +2036,10 @@ function enterObserve() {
       observeParticle = null; kasinaParticle = null; particleVisible = false;
 
       if (obsStorm) {
-        // Storm + noting — go straight to storm screen without flashing the noting UI first
+        // Storm + noting — go straight to storm screen
+        buildObsScreen();
         const obsScr = document.getElementById('s-observe');
-        if (obsScr) { obsScr.innerHTML = ''; obsScr.style.transition = 'none'; obsScr.style.opacity = '1'; }
+        if (obsScr) { obsScr.style.transition = 'none'; obsScr.style.opacity = '1'; }
         obsTimerEnd = Date.now() + obsMinutes * 60 * 1000;
         startObsTimer();
         startStormScreen();
@@ -2169,24 +2052,13 @@ function enterObserve() {
           kasinaParticle = new KasinaParticle();
           kasinaParticle.alpha = 0;
         }
-        kasinaParticle.alpha = 0;
-        kasinaParticle.targetAlpha = 0;
+        kasinaParticle.targetAlpha = 1;
         observeParticle = null;
         particleVisible = true;
       } else if (observeParticle) { observeParticle.targetAlpha = 0.9; particleVisible = true; }
     }
 
     buildObsScreen();
-    if (obsMode === 'kasina' && kasinaParticle) {
-      kasinaParticle.alpha = 0;
-      kasinaParticle.targetAlpha = 0;
-      clearTimeout(obsCeremonyTimer);
-      obsCeremonyTimer = setTimeout(() => {
-        if (currentMode === 'observe' && obsMode === 'kasina' && kasinaParticle) {
-          kasinaParticle.targetAlpha = 0.96;
-        }
-      }, 1100);
-    }
     // Reset any opacity from setup screen fade
     const obsScr = document.getElementById('s-observe');
     if (obsScr) { obsScr.style.transition = 'none'; obsScr.style.opacity = '1'; }
@@ -2347,7 +2219,6 @@ function doAffirm() {
   if (!fieldActive || isCoherent) return;
   lastAffirmTime = Date.now();
   playAffirmSound();
-  const helper = document.getElementById('obs-helper-txt'); if (helper) helper.style.opacity = '0';
 
   if (obsMode === 'kasina' && kasinaParticle) {
     // Kasina: each tap crystallises the object one stage
@@ -2369,7 +2240,7 @@ function doAffirm() {
       // Full crystallisation — brief hold then coherence
       const btn2 = document.getElementById('affirmBtn');
       if (btn2) { btn2.textContent = lang === 'en' ? 'crystallised' : 'cristalizado'; btn2.style.color = 'rgba(255,248,200,.95)'; btn2.style.borderColor = 'rgba(255,240,160,.8)'; }
-      setTimeout(() => reachObsCoherence(), 2200);
+      setTimeout(() => reachObsCoherence(), 1800);
     } else {
       updateSignalDots();
     }
@@ -2436,7 +2307,6 @@ function reachObsCoherence() {
         : 'Nombraste lo que estaba presente.\nEl campo lo recibió.\nEso es suficiente.')
     : TRANSLATIONS[lang].obsCoherenceLine;
 
-  bgPauseUntil = performance.now() + 1400;
   setTimeout(() => {
     particleVisible = false;
     document.getElementById('obsCohWord').textContent = cohWord;
@@ -2450,7 +2320,7 @@ function reachObsCoherence() {
     if (isNoting && sessionNoteLog.length >= 3) {
       // AI mirror removed — observe is pure attention, no feedback
     }
-  }, 3200);
+  }, 2200);
 }
 
 // ── VOICE NOTING ──
@@ -2890,7 +2760,14 @@ function buildCollapseField() {
       if (isTransitioning) return; // [TECH3]
       o.style.filter = 'blur(0px)';
       o.style.opacity = '1';
-      seedSelectedState(st, idx, o);
+      o.querySelector('.oname').style.color = 'rgba(255,235,180,1)';
+      o.querySelector('.oname').style.textShadow = '0 0 40px rgba(255,210,80,.75), 0 0 80px rgba(255,190,40,.4)';
+      setTimeout(() => {
+        document.querySelectorAll('.orb').forEach(el => { el.classList.remove('collapsing'); el.classList.add('fading'); });
+        o.classList.remove('fading'); o.classList.add('collapsing');
+        spChosen = idx;
+        setTimeout(() => selectState(st), 320);
+      }, 180);
     };
     o.addEventListener('click', go);
     o.addEventListener('touchend', e => { e.preventDefault(); go(); });
@@ -2905,7 +2782,9 @@ function selectState(state) {
   isTransitioning = true; // [TECH3]
   if (navigator.vibrate) navigator.vibrate(38);
   initAudio(); if(audioCtx.state==='suspended') audioCtx.resume();
+  playCollapseSound();
   const b = document.getElementById('burst');
+  b.classList.remove('go'); void b.offsetWidth; b.classList.add('go');
   const t = TRANSLATIONS[lang];
   curStateName = state.name;
   document.getElementById('cword').textContent = state.name;
@@ -2927,12 +2806,9 @@ function selectState(state) {
   document.getElementById('obsNote5').innerHTML = '';
   document.getElementById('closing').style.opacity = '0'; document.getElementById('closing').textContent = '';
   document.getElementById('qlabel6').textContent = t.qlabel;
-  const chosenIndex = Number.isInteger(collapseSeedParticle) ? collapseSeedParticle : spChosen;
-  const chosen = spParticles[chosenIndex%Math.max(spParticles.length,1)];
+  const chosen = spParticles[spChosen%Math.max(spParticles.length,1)];
   if (chosen) { chosen.cx=0.5; chosen.cy=0.14; chosen.x=0.5*innerWidth; chosen.y=0.14*innerHeight; }
-  initScene('state_chosen', chosenIndex);
-  spChosen = chosenIndex;
-  collapseSeedParticle = null;
+  initScene('state_chosen', spChosen);
   collapseStage = 0;
   document.querySelectorAll('.cp-stage').forEach(s => { s.classList.remove('on'); s.style.cssText=''; });
   // cs3 (imagination prompt stage) resets naturally with cp-stage cssText clear
@@ -2941,9 +2817,6 @@ function selectState(state) {
   particlesHidden = false;
   fadeDrone(true, 1.5);
   showScreen('s-collapse', () => {
-    const b = document.getElementById('burst');
-    if (b) { b.classList.remove('go'); void b.offsetWidth; b.classList.add('go'); }
-    playCollapseSound();
     isTransitioning = false; // [TECH3] clear after transition completes
     setTimeout(() => {
       const gh = document.getElementById('ghosts');
@@ -2985,9 +2858,9 @@ function showCollapseStage(n) {
     el.style.cssText = 'opacity:0;pointer-events:none;transition:none;visibility:hidden;';
     el.classList.add('on');
     requestAnimationFrame(() => requestAnimationFrame(() => {
-      el.style.visibility = 'visible'; el.style.transition = 'opacity 1.9s ease';
+      el.style.visibility = 'visible'; el.style.transition = 'opacity 1.4s ease';
       el.style.opacity = '1'; el.style.pointerEvents = 'all';
-      setTimeout(() => { el.style.cssText = ''; }, 1950);
+      setTimeout(() => { el.style.cssText = ''; }, 1450);
     }));
     const tapEl = document.getElementById('tapNext');
     tapEl.style.transition = 'opacity 0.7s ease';
@@ -3223,10 +3096,7 @@ function enterStill() {
 
   spParticles.forEach(p => { p.targetAlpha = 0.12 + Math.random()*0.08; });
 
-  const stillTxtEl = document.getElementById('stillTxt');
-  stillTxtEl.style.transition = 'none';
-  stillTxtEl.style.opacity = '0';
-  stillTxtEl.innerHTML = t.stillTxt.replace(/\n/g,'<br>');
+  document.getElementById('stillTxt').innerHTML = t.stillTxt.replace(/\n/g,'<br>');
   const stillBackEl = document.getElementById('stillBack');
   stillBackEl.textContent = t.retBtn;
   stillBackEl.style.opacity = '0';
@@ -3249,12 +3119,6 @@ function enterStill() {
     sc.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;opacity:0;transition:opacity 2.5s ease;';
     orbZone.appendChild(sc);
     setTimeout(() => { sc.style.opacity = '1'; }, 300);
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        stillTxtEl.style.transition = 'opacity 1.6s ease';
-        stillTxtEl.style.opacity = '1';
-      });
-    });
 
     const sx = sc.getContext('2d');
     let stillPh = 0, stillBreathPh = 0;
@@ -3361,8 +3225,6 @@ function enterStill() {
         ? 'una cosa verdadera de esta sesión'
         : 'one true thing from this session';
 
-      const oldStillResponse = document.getElementById('still-ai-response');
-      if (oldStillResponse) oldStillResponse.remove();
       const stillResponseEl = document.createElement('div');
       stillResponseEl.id = 'still-ai-response';
       threadWrap.appendChild(stillResponseEl);
@@ -3684,25 +3546,40 @@ function startDecohere() {
       p.phV *= 0.4;
     });
   }, 300);
-  buildShadowGrid();
+
   const t = TRANSLATIONS[lang];
   const scr = document.getElementById('s-witness');
   if (scr) { scr.style.paddingTop = ''; scr.style.gap = ''; }
   const arrLine = document.getElementById('decArrivalLine');
   const arrSub  = document.getElementById('decArrivalSub');
-  // Set content but keep hidden — fade in after screen transition to prevent double-render jump
+  const grid = document.getElementById('shadowGrid');
+  const tapHint = document.getElementById('decTapHint');
+
+  // Prepare a slower, sequential Witness arrival.
   arrLine.textContent = t.decArrivalLine;
   arrSub.textContent  = t.decArrivalSub;
-  arrLine.style.transition = 'none'; arrLine.style.opacity = '0';
-  arrSub.style.transition  = 'none'; arrSub.style.opacity  = '0';
-  const tapHint = document.getElementById('decTapHint');
+  arrLine.style.transition = 'none';
+  arrSub.style.transition  = 'none';
+  arrLine.style.opacity = '0';
+  arrSub.style.opacity  = '0';
   if (tapHint) tapHint.textContent = '';
+  if (grid) {
+    grid.innerHTML = '';
+    grid.style.opacity = '0';
+    grid.style.pointerEvents = 'none';
+  }
+
   showScreen('s-witness', () => {
     requestAnimationFrame(() => {
-      arrLine.style.transition = 'opacity 1.0s ease';
-      arrSub.style.transition  = 'opacity 1.0s ease';
-      setTimeout(() => { arrLine.style.opacity = '1'; }, 80);
-      setTimeout(() => { arrSub.style.opacity  = '1'; }, 320);
+      arrLine.style.transition = 'opacity 1.25s ease';
+      arrSub.style.transition  = 'opacity 1.25s ease';
+      setTimeout(() => { arrLine.style.opacity = '1'; }, 120);
+      setTimeout(() => { arrSub.style.opacity  = '1'; }, 760);
+      // Only reveal the shadow words after the text has had room to land.
+      setTimeout(() => {
+        buildShadowGrid();
+        if (grid) grid.style.pointerEvents = 'all';
+      }, 1680);
     });
   });
 }
@@ -3717,8 +3594,8 @@ function buildShadowGrid() {
   const en = SHADOW_STATES.en, es = SHADOW_STATES.es;
 
   grid.style.opacity = '0';
-  grid.style.transition = 'opacity 1.2s ease';
-  setTimeout(() => { grid.style.opacity = '1'; }, 600);
+  grid.style.transition = 'opacity 1.35s ease';
+  setTimeout(() => { grid.style.opacity = '1'; }, 180);
 
   en.forEach((name, i) => {
     const displayName = lang === 'en' ? name : es[i];
@@ -3731,10 +3608,10 @@ function buildShadowGrid() {
     const delay = (Math.random() * -3).toFixed(2);
     o.style.animationDuration = dur + 's';
     o.style.animationDelay = delay + 's';
-    o.style.transition = 'opacity 1.2s ease, color .3s ease, border-color .3s ease, background .3s ease';
+    o.style.transition = 'opacity 1.35s ease, color .3s ease, border-color .3s ease, background .3s ease';
     o.textContent = displayName;
 
-    setTimeout(() => { o.style.opacity = '1'; }, 80 * i + 200);
+    setTimeout(() => { o.style.opacity = '1'; }, 110 * i + 280);
 
     const go = () => {
       if (audioCtx) playTap();
@@ -5581,12 +5458,12 @@ function startDecBreath(displayName) {
     dDelay(runCycle, 11800);
   }
 
-  // Pre-breath instructions
+  // Pre-breath instructions — slower lead-in so Witness feels less abrupt.
   startWitnessDrone();
-  dDelay(() => setBtext(lang === 'en' ? 'breathe in' : 'inhala'), 800);
-  dDelay(() => setBtext(lang === 'en' ? `exhale into · ${displayName}` : `exhala hacia · ${displayName}`), 5000);
-  dDelay(() => { if (window._decOrb) window._decOrb.wordTargetAlpha = 0.28; }, 5000);
-  dDelay(runCycle, 9000);
+  dDelay(() => setBtext(lang === 'en' ? 'breathe in' : 'inhala'), 1200);
+  dDelay(() => setBtext(lang === 'en' ? `exhale into · ${displayName}` : `exhala hacia · ${displayName}`), 5600);
+  dDelay(() => { if (window._decOrb) window._decOrb.wordTargetAlpha = 0.28; }, 5600);
+  dDelay(runCycle, 9800);
 }
 
 function showDecEnd() {
