@@ -1,5 +1,5 @@
 // Cache-first — app works fully offline after first load
-const CACHE = 'field-v6';
+const CACHE = 'field-v6-observe';
 const PRECACHE = [
   './',
   './index.html',
