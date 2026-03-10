@@ -6588,3 +6588,556 @@ window.addEventListener('keydown', e => {
     if (backBtn) backBtn.onclick = () => goHome();
   };
 })();
+
+
+// === Witness rebuild v26: end-to-end smoother chamber + breath ===
+(function(){
+  const WZ = [
+    { key:'head',   label:{en:'head', es:'cabeza'},              y:0.105, h:0.13, w:0.30 },
+    { key:'neck',   label:{en:'neck', es:'cuello'},              y:0.215, h:0.08, w:0.20 },
+    { key:'chest',  label:{en:'chest', es:'pecho'},              y:0.335, h:0.15, w:0.46 },
+    { key:'solar',  label:{en:'solar plexus', es:'plexo solar'}, y:0.472, h:0.10, w:0.31 },
+    { key:'stomach',label:{en:'stomach', es:'estómago'},         y:0.58,  h:0.11, w:0.35 },
+    { key:'groin',  label:{en:'groin', es:'ingle'},              y:0.71,  h:0.10, w:0.28 }
+  ];
+
+  function rwCleanup(){
+    ['bodymapWrap','voice-sense-layer','chamber-loading','witness-breathe-cta'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el && el.parentNode) el.parentNode.removeChild(el);
+    });
+    const grid = document.getElementById('shadowGrid');
+    if (grid) {
+      grid.innerHTML = '';
+      grid.style.opacity = '0';
+      grid.style.pointerEvents = 'none';
+    }
+    const arrLine = document.getElementById('decArrivalLine');
+    const arrSub = document.getElementById('decArrivalSub');
+    const tapHint = document.getElementById('decTapHint');
+    if (arrLine) arrLine.style.opacity = '0';
+    if (arrSub) arrSub.style.opacity = '0';
+    if (tapHint) tapHint.textContent = '';
+  }
+
+  function rwPlayZoneTone(zoneKey){
+    if (!audioCtx) return;
+    const freqs = { head:1056, neck:792, chest:528, solar:444, stomach:396, groin:264 };
+    const f = freqs[zoneKey] || 528;
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = 'sine';
+    o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.05, audioCtx.currentTime + 0.08);
+    g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 1.3);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(); o.stop(audioCtx.currentTime + 1.35);
+  }
+
+  function rwMirrorFallback(){
+    const word = (lang === 'en' ? decStateName : (decStateNameES || decStateName) || '').toLowerCase();
+    const zone = decBodySpot || (lang === 'en' ? 'body' : 'cuerpo');
+    return lang === 'en'
+      ? `You’re noticing ${word} in the ${zone}. Stay with the shape of it, not the story.`
+      : `Estás notando ${word} en el/la ${zone}. Quédate con su forma, no con la historia.`;
+  }
+
+  async function rwFetchMirror(){
+    const apiKey = lsGet('field_api_key');
+    if (!apiKey) return rwMirrorFallback();
+    const word = lang === 'en' ? decStateName : (decStateNameES || decStateName);
+    const zone = decBodySpot || (lang === 'en' ? 'body' : 'cuerpo');
+    const system = `You are a quiet witness mirror inside a contemplative app. Reply with exactly one short reflective sentence. No advice. No explanation. No analysis. No questions unless essential. Max 20 words.`;
+    const user = lang === 'en'
+      ? `State: ${word}. Body location: ${zone}. Reflect one gentle sentence back.`
+      : `Estado: ${word}. Lugar del cuerpo: ${zone}. Devuelve una sola frase suave de reflejo.`;
+    try {
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [{ role:'system', content: system }, { role:'user', content: user }],
+          temperature: 0.7,
+          max_tokens: 60
+        })
+      });
+      if (!res.ok) return rwMirrorFallback();
+      const data = await res.json();
+      const txt = data?.choices?.[0]?.message?.content?.trim();
+      return txt || rwMirrorFallback();
+    } catch (e) {
+      return rwMirrorFallback();
+    }
+  }
+
+  function rwStartBreath(){
+    const token = nextActivityToken();
+    currentMode = 'witness';
+    const displayName = lang === 'en' ? decStateName : (decStateNameES || decStateName);
+    rwCleanup();
+    showBackBtn();
+    const backBtn = document.getElementById('backBtn');
+    if (backBtn) backBtn.onclick = () => goHome();
+
+    const ackLayer = document.getElementById('dec-ack-layer');
+    const breathLayer = document.getElementById('dec-breath-layer');
+    const wordEl = document.getElementById('dec-word');
+    const btext = document.getElementById('dec-btext');
+    const bp = document.getElementById('dec-bp');
+    const wordOrb = document.getElementById('dec-word-orb');
+    const bdots = document.getElementById('dec-bdots');
+
+    clearAllDec();
+    [ackLayer, breathLayer, wordEl, btext, bp, wordOrb, bdots].forEach(el => {
+      if (el) {
+        el.style.transition = 'none';
+        el.style.opacity = '0';
+        el.style.pointerEvents = 'none';
+      }
+    });
+    if (wordEl) {
+      wordEl.textContent = displayName;
+      wordEl.style.textShadow = '0 0 36px rgba(240,220,180,.24)';
+    }
+    if (bp) {
+      bp.style.display = 'none';
+      bp.style.transform = 'scale(1)';
+      bp.style.filter = '';
+    }
+    if (wordOrb) {
+      wordOrb.style.display = 'none';
+      wordOrb.textContent = '';
+    }
+
+    showScreen('s-dec-breath', () => {
+      if (!isCurrentActivity(token)) return;
+      if (ackLayer) {
+        ackLayer.style.transition = 'opacity .7s ease';
+        ackLayer.style.opacity = '1';
+        ackLayer.style.pointerEvents = 'all';
+      }
+      if (wordEl) {
+        wordEl.style.transition = 'opacity .9s ease, transform .9s ease';
+        wordEl.style.opacity = '1';
+        wordEl.style.transform = 'translate(-50%,-50%) scale(1)';
+      }
+      const cta = document.createElement('button');
+      cta.id = 'witness-breathe-cta';
+      cta.type = 'button';
+      cta.style.cssText = 'position:fixed;left:50%;bottom:max(68px,8svh);transform:translateX(-50%);z-index:60;background:none;border:none;color:rgba(240,230,208,.58);font-size:clamp(13px,3.4vw,16px);letter-spacing:.24em;text-transform:lowercase;font-family:"Plus Jakarta Sans",sans-serif;padding:12px 24px;opacity:0;transition:opacity .55s ease;-webkit-tap-highlight-color:transparent;';
+      cta.textContent = lang === 'en' ? 'breathe' : 'respira';
+      document.body.appendChild(cta);
+      activityTimeout(token, () => { cta.style.opacity = '1'; }, 900);
+      let begun = false;
+      const begin = (e) => {
+        if (e) { e.preventDefault(); e.stopPropagation(); }
+        if (begun || !isCurrentActivity(token)) return;
+        begun = true;
+        cta.style.opacity = '0';
+        activityTimeout(token, () => {
+          if (cta.parentNode) cta.parentNode.removeChild(cta);
+          if (typeof startDecBreath === 'function') startDecBreath(displayName);
+        }, 260);
+      };
+      cta.addEventListener('pointerup', begin);
+      activityTimeout(token, begin, 4200);
+    });
+  }
+
+  window.startDissolutionChamber = function witnessMirrorRebuilt(){
+    const token = nextActivityToken();
+    currentMode = 'chamber';
+    rwCleanup();
+    applyDecoherePalette();
+    showBackBtn();
+    const backBtn = document.getElementById('backBtn');
+    if (backBtn) backBtn.onclick = () => goHome();
+
+    const contextEl = document.getElementById('chamber-context');
+    const msgsEl = document.getElementById('chamber-messages');
+    const inputWrap = document.getElementById('chamber-input-wrap');
+    const skipEl = document.getElementById('chamber-skip');
+    const inputEl = document.getElementById('chamber-input');
+    const micBtn = document.getElementById('chamber-mic');
+    const sendBtn = document.getElementById('chamber-send');
+    const shadowName = (lang === 'en' ? decStateName : (decStateNameES || decStateName) || '').toLowerCase();
+    const zoneName = decBodySpot || (lang === 'en' ? 'body' : 'cuerpo');
+
+    msgsEl.innerHTML = '';
+    contextEl.textContent = `${shadowName} · ${zoneName}`;
+    contextEl.style.opacity = '0';
+    inputWrap.style.display = 'none';
+    inputWrap.style.opacity = '0';
+    inputWrap.style.pointerEvents = 'none';
+    if (inputEl) inputEl.value = '';
+    if (micBtn) micBtn.style.display = 'none';
+    if (sendBtn) sendBtn.style.display = 'none';
+    skipEl.textContent = lang === 'en' ? 'breathe' : 'respira';
+    skipEl.style.opacity = '0';
+    skipEl.style.fontSize = 'clamp(22px,6vw,30px)';
+    skipEl.style.fontFamily = '"Cormorant Garamond", Georgia, serif';
+    skipEl.style.fontStyle = 'italic';
+    skipEl.style.letterSpacing = '.04em';
+    skipEl.style.color = 'rgba(240,230,208,.92)';
+    skipEl.onclick = () => rwStartBreath();
+
+    showScreen('s-chamber', async () => {
+      if (!isCurrentActivity(token)) return;
+      activityTimeout(token, () => { contextEl.style.opacity = '1'; }, 160);
+      const loading = document.createElement('div');
+      loading.id = 'chamber-loading';
+      loading.className = 'chamber-msg ai';
+      loading.textContent = '…';
+      loading.style.opacity = '0';
+      loading.style.transition = 'opacity .45s ease';
+      msgsEl.appendChild(loading);
+      activityTimeout(token, () => { loading.style.opacity = '1'; }, 180);
+      const mirror = await rwFetchMirror();
+      if (!isCurrentActivity(token)) return;
+      if (loading.parentNode) loading.parentNode.removeChild(loading);
+      const div = document.createElement('div');
+      div.className = 'chamber-msg ai';
+      div.textContent = mirror;
+      div.style.opacity = '0';
+      div.style.transform = 'translateY(8px)';
+      div.style.transition = 'opacity .55s ease, transform .55s ease';
+      msgsEl.appendChild(div);
+      activityFrame(token, () => {
+        div.style.opacity = '1';
+        div.style.transform = 'translateY(0)';
+      });
+      activityTimeout(token, () => { skipEl.style.opacity = '1'; }, 700);
+    });
+  };
+
+  window.exitChamber = function exitChamberRebuilt(){
+    rwStartBreath();
+  };
+
+  window.startDecAcknowledge = function startDecAcknowledgeRebuilt(){
+    rwStartBreath();
+  };
+
+  window.startDecohere = function startDecohereRebuiltV26(){
+    const token = nextActivityToken();
+    if (navigator.vibrate) navigator.vibrate(16);
+    initAudio();
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(()=>{});
+    playDecohereSignature();
+    currentMode = 'witness';
+    showBackBtn();
+    const backBtn = document.getElementById('backBtn');
+    if (backBtn) backBtn.onclick = () => goHome();
+
+    clearGhosts();
+    rwCleanup();
+    applyDecoherePalette();
+    fadeDrone(true, 1.2);
+    spParticles = [];
+
+    const t = TRANSLATIONS[lang];
+    const scr = document.getElementById('s-witness');
+    const grid = document.getElementById('shadowGrid');
+    const arrLine = document.getElementById('decArrivalLine');
+    const arrSub = document.getElementById('decArrivalSub');
+    const tapHint = document.getElementById('decTapHint');
+
+    if (scr) {
+      scr.style.paddingTop = '';
+      scr.style.gap = '';
+    }
+    if (grid) {
+      grid.innerHTML = '';
+      grid.style.cssText = 'width:100%;flex:1;min-height:0;display:flex;flex-wrap:wrap;align-content:center;justify-content:center;gap:clamp(10px,2.8vw,18px);padding:0 clamp(16px,5vw,34px);opacity:0;transform:translateY(8px);transition:opacity .38s ease, transform .38s ease;';
+    }
+    if (arrLine) {
+      arrLine.textContent = t.decArrivalLine;
+      arrLine.style.opacity = '0';
+      arrLine.style.transform = 'translateY(8px)';
+      arrLine.style.transition = 'opacity .5s ease, transform .5s ease';
+    }
+    if (arrSub) {
+      arrSub.textContent = t.decArrivalSub;
+      arrSub.style.opacity = '0';
+      arrSub.style.transform = 'translateY(8px)';
+      arrSub.style.transition = 'opacity .5s ease, transform .5s ease';
+    }
+    if (tapHint) tapHint.textContent = '';
+
+    showScreen('s-witness', () => {
+      if (!isCurrentActivity(token)) return;
+      activityTimeout(token, () => {
+        initSpParticles(10);
+        spParticles.forEach(p => {
+          p.targetAlpha = 0.14 + Math.random() * 0.10;
+          p.targetClarity = 0;
+          p.phV *= 0.35;
+        });
+      }, 110);
+      activityFrame(token, () => {
+        if (arrLine) { arrLine.style.opacity = '1'; arrLine.style.transform = 'translateY(0)'; }
+        activityTimeout(token, () => { if (arrSub) { arrSub.style.opacity = '1'; arrSub.style.transform = 'translateY(0)'; } }, 80);
+        activityTimeout(token, () => window.buildShadowGrid(token), 190);
+      });
+    });
+  };
+
+  window.buildShadowGrid = function buildShadowGridRebuiltV26(token = activityToken){
+    const grid = document.getElementById('shadowGrid');
+    if (!grid) return;
+    const en = SHADOW_STATES.en;
+    const es = SHADOW_STATES.es;
+    let selected = false;
+    grid.innerHTML = '';
+    grid.style.opacity = '0';
+    grid.style.transform = 'translateY(8px)';
+    en.forEach((name, i) => {
+      const display = lang === 'en' ? name : es[i];
+      const btn = document.createElement('button');
+      btn.className = 'shadow-orb';
+      btn.type = 'button';
+      btn.textContent = display;
+      btn.style.opacity = '1';
+      btn.style.transition = 'opacity .22s ease, transform .22s ease, color .22s ease, border-color .22s ease, background .22s ease';
+      const choose = (e) => {
+        if (e) { e.preventDefault(); e.stopPropagation(); }
+        if (selected || !isCurrentActivity(token)) return;
+        selected = true;
+        if (audioCtx) playTap();
+        decStateName = name;
+        decStateNameES = es[i];
+        grid.querySelectorAll('.shadow-orb').forEach(el => {
+          el.style.pointerEvents = 'none';
+          if (el === btn) {
+            el.style.transform = 'scale(1.03)';
+            el.style.color = 'rgba(240,204,136,1)';
+            el.style.borderColor = 'rgba(201,169,110,.85)';
+            el.style.background = 'rgba(201,169,110,.10)';
+          } else {
+            el.style.opacity = '0.08';
+            el.style.transform = 'scale(0.985)';
+          }
+        });
+        activityTimeout(token, () => window.showDecBodyMap(token), 150);
+      };
+      btn.addEventListener('pointerup', choose);
+      grid.appendChild(btn);
+    });
+    activityFrame(token, () => {
+      if (!isCurrentActivity(token)) return;
+      grid.style.opacity = '1';
+      grid.style.transform = 'translateY(0)';
+    });
+  };
+
+  window.showDecBodyMap = function showDecBodyMapRebuiltV26(token = activityToken){
+    if (!isCurrentActivity(token)) return;
+    const line = document.getElementById('decArrivalLine');
+    const sub = document.getElementById('decArrivalSub');
+    const grid = document.getElementById('shadowGrid');
+    const tapHint = document.getElementById('decTapHint');
+    if (line) line.style.opacity = '0';
+    if (sub) sub.style.opacity = '0';
+    if (grid) {
+      grid.style.opacity = '0';
+      grid.style.transform = 'translateY(8px)';
+      grid.style.pointerEvents = 'none';
+    }
+    if (tapHint) tapHint.textContent = '';
+
+    const old = document.getElementById('bodymapWrap');
+    if (old && old.parentNode) old.parentNode.removeChild(old);
+
+    const wrap = document.createElement('div');
+    wrap.id = 'bodymapWrap';
+    wrap.style.cssText = 'position:fixed;inset:0;z-index:10;background:var(--bg);opacity:0;transition:opacity .42s ease;overflow:hidden;';
+    document.body.appendChild(wrap);
+
+    const qEl = document.createElement('div');
+    qEl.style.cssText = 'position:absolute;left:50%;bottom:max(72px,8svh);transform:translateX(-50%);font-size:clamp(19px,5.2vw,26px);font-style:italic;text-align:center;color:rgba(240,230,208,.92);letter-spacing:.02em;line-height:1.45;z-index:5;padding:0 22px;transition:opacity .32s ease;';
+    qEl.textContent = lang === 'en' ? 'where does it live in you?' : '¿dónde vive en ti?';
+    wrap.appendChild(qEl);
+
+    const tapEl = document.createElement('div');
+    tapEl.id = 'bodymap-tap-hint';
+    tapEl.style.cssText = 'position:absolute;left:50%;bottom:max(34px,4.5svh);transform:translateX(-50%);font-size:clamp(11px,3vw,13px);letter-spacing:.2em;text-transform:uppercase;color:rgba(240,230,208,.52);z-index:5;transition:opacity .32s ease;text-align:center;';
+    tapEl.textContent = lang === 'en' ? 'tap the area you feel it most' : 'toca donde lo sientes más';
+    wrap.appendChild(tapEl);
+
+    const watermarkEl = document.createElement('div');
+    watermarkEl.style.cssText = 'position:absolute;left:50%;top:41%;transform:translate(-50%,-50%);font-size:clamp(40px,11vw,76px);font-weight:300;font-family:"Cormorant Garamond",Georgia,serif;font-style:italic;color:rgba(180,160,210,.06);letter-spacing:.06em;pointer-events:none;z-index:0;white-space:nowrap;transition:opacity .42s ease;';
+    watermarkEl.textContent = lang === 'en' ? decStateName : (decStateNameES || decStateName);
+    wrap.appendChild(watermarkEl);
+
+    const ceremonyEl = document.createElement('div');
+    ceremonyEl.style.cssText = 'position:absolute;left:50%;transform:translate(-50%,-50%);font-size:clamp(26px,7vw,42px);font-weight:300;font-family:"Cormorant Garamond",Georgia,serif;font-style:italic;color:rgba(220,200,240,0);letter-spacing:.06em;text-shadow:0 0 0 rgba(180,160,200,0);pointer-events:none;z-index:6;white-space:nowrap;transition:color .4s ease,text-shadow .4s ease,opacity .6s ease;';
+    ceremonyEl.textContent = lang === 'en' ? decStateName : (decStateNameES || decStateName);
+    wrap.appendChild(ceremonyEl);
+
+    const c = document.createElement('canvas');
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const W = window.innerWidth, H = window.innerHeight;
+    c.width = Math.floor(W * dpr);
+    c.height = Math.floor(H * dpr);
+    c.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1;transition:opacity .42s ease;';
+    wrap.appendChild(c);
+    const ctx = c.getContext('2d');
+    ctx.scale(dpr, dpr);
+
+    const FIG_TOP = 0.015, FIG_BOT = 0.845, FIG_L = 0.20, FIG_R = 0.80;
+    const figH = (FIG_BOT - FIG_TOP) * H;
+    const figW = (FIG_R - FIG_L) * W;
+    const figX = FIG_L * W;
+    const figY = FIG_TOP * H;
+    const centerX = figX + figW * 0.5;
+    let activeZone = null;
+    let glowPhase = 0;
+    let breathPhase = 0;
+    let rafId = null;
+
+    function zoneRect(z){
+      const w = figW * z.w;
+      const h = figH * z.h;
+      return { x: centerX - w/2, y: figY + figH * z.y - h/2, w, h };
+    }
+
+    function roundedRectPath(x,y,w,h,r){
+      const rr = Math.min(r, w/2, h/2);
+      ctx.beginPath();
+      ctx.moveTo(x+rr,y);
+      ctx.arcTo(x+w,y,x+w,y+h,rr);
+      ctx.arcTo(x+w,y+h,x,y+h,rr);
+      ctx.arcTo(x,y+h,x,y,rr);
+      ctx.arcTo(x,y,x+w,y,rr);
+      ctx.closePath();
+    }
+
+    function strokePath(builder, active, blur = 3, baseWidth = 1.55){
+      ctx.save();
+      ctx.strokeStyle = 'rgba(210,185,235,1)';
+      ctx.lineWidth = active ? 5.0 : 3.0;
+      ctx.filter = 'blur(' + (active ? 6 : blur) + 'px)';
+      ctx.globalAlpha = active ? (0.22 + (0.5 + 0.5*Math.sin(glowPhase*2.2))*0.14) : (0.10 + (0.5 + 0.5*Math.sin(breathPhase))*0.08);
+      builder();
+      ctx.stroke();
+      ctx.restore();
+      ctx.save();
+      ctx.strokeStyle = 'rgba(230,215,245,1)';
+      ctx.lineWidth = active ? 2.2 : baseWidth;
+      ctx.globalAlpha = active ? (0.86 + (0.5 + 0.5*Math.sin(glowPhase*2.2))*0.10) : (0.56 + (0.5 + 0.5*Math.sin(breathPhase))*0.14);
+      builder();
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawFigure(){
+      if (!isCurrentActivity(token) || currentMode !== 'witness') return;
+      ctx.clearRect(0,0,W,H);
+      glowPhase += 0.02;
+      breathPhase += 0.01;
+      const pulse = 0.5 + 0.5*Math.sin(breathPhase);
+      const scale = 1 + pulse * 0.012;
+      ctx.save();
+      ctx.translate(centerX, figY + figH * 0.49);
+      ctx.scale(scale, scale);
+      ctx.translate(-centerX, -(figY + figH * 0.49));
+
+      if (activeZone) {
+        const zr = zoneRect(activeZone);
+        const grad = ctx.createRadialGradient(centerX, zr.y + zr.h/2, 0, centerX, zr.y + zr.h/2, Math.max(zr.h*1.2, zr.w));
+        grad.addColorStop(0, 'rgba(210,185,235,0.24)');
+        grad.addColorStop(1, 'rgba(210,185,235,0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0,0,W,H);
+      }
+
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      strokePath(() => { ctx.beginPath(); ctx.ellipse(centerX, figY + figH*0.09, figW*0.105, figH*0.09, 0, 0, Math.PI*2); }, activeZone && activeZone.key === 'head');
+      strokePath(() => { ctx.beginPath(); ctx.moveTo(centerX - figW*0.05, figY + figH*0.165); ctx.lineTo(centerX - figW*0.05, figY + figH*0.205); ctx.lineTo(centerX + figW*0.05, figY + figH*0.205); ctx.lineTo(centerX + figW*0.05, figY + figH*0.165); }, activeZone && activeZone.key === 'neck');
+      strokePath(() => {
+        ctx.beginPath();
+        ctx.moveTo(centerX - figW*0.05, figY + figH*0.195);
+        ctx.bezierCurveTo(centerX - figW*0.24, figY + figH*0.20, centerX - figW*0.34, figY + figH*0.27, centerX - figW*0.33, figY + figH*0.37);
+        ctx.bezierCurveTo(centerX - figW*0.31, figY + figH*0.51, centerX - figW*0.23, figY + figH*0.63, centerX - figW*0.18, figY + figH*0.72);
+        ctx.bezierCurveTo(centerX - figW*0.17, figY + figH*0.81, centerX - figW*0.14, figY + figH*0.89, centerX - figW*0.11, figY + figH*0.93);
+        ctx.lineTo(centerX - figW*0.06, figY + figH*0.93);
+        ctx.bezierCurveTo(centerX - figW*0.05, figY + figH*0.84, centerX - figW*0.03, figY + figH*0.72, centerX, figY + figH*0.63);
+        ctx.bezierCurveTo(centerX + figW*0.03, figY + figH*0.72, centerX + figW*0.05, figY + figH*0.84, centerX + figW*0.06, figY + figH*0.93);
+        ctx.lineTo(centerX + figW*0.11, figY + figH*0.93);
+        ctx.bezierCurveTo(centerX + figW*0.14, figY + figH*0.89, centerX + figW*0.17, figY + figH*0.81, centerX + figW*0.18, figY + figH*0.72);
+        ctx.bezierCurveTo(centerX + figW*0.23, figY + figH*0.63, centerX + figW*0.31, figY + figH*0.51, centerX + figW*0.33, figY + figH*0.37);
+        ctx.bezierCurveTo(centerX + figW*0.34, figY + figH*0.27, centerX + figW*0.24, figY + figH*0.20, centerX + figW*0.05, figY + figH*0.195);
+      }, activeZone && ['chest','solar','stomach','groin'].includes(activeZone.key));
+      strokePath(() => {
+        ctx.beginPath();
+        ctx.moveTo(centerX - figW*0.22, figY + figH*0.22);
+        ctx.bezierCurveTo(centerX - figW*0.33, figY + figH*0.29, centerX - figW*0.38, figY + figH*0.43, centerX - figW*0.40, figY + figH*0.56);
+        ctx.bezierCurveTo(centerX - figW*0.38, figY + figH*0.60, centerX - figW*0.34, figY + figH*0.60, centerX - figW*0.31, figY + figH*0.55);
+        ctx.bezierCurveTo(centerX - figW*0.28, figY + figH*0.48, centerX - figW*0.25, figY + figH*0.38, centerX - figW*0.20, figY + figH*0.28);
+      }, false);
+      strokePath(() => {
+        ctx.beginPath();
+        ctx.moveTo(centerX + figW*0.22, figY + figH*0.22);
+        ctx.bezierCurveTo(centerX + figW*0.33, figY + figH*0.29, centerX + figW*0.38, figY + figH*0.43, centerX + figW*0.40, figY + figH*0.56);
+        ctx.bezierCurveTo(centerX + figW*0.38, figY + figH*0.60, centerX + figW*0.34, figY + figH*0.60, centerX + figW*0.31, figY + figH*0.55);
+        ctx.bezierCurveTo(centerX + figW*0.28, figY + figH*0.48, centerX + figW*0.25, figY + figH*0.38, centerX + figW*0.20, figY + figH*0.28);
+      }, false);
+      if (activeZone) {
+        const zr = zoneRect(activeZone);
+        ctx.save();
+        roundedRectPath(zr.x, zr.y, zr.w, zr.h, Math.min(zr.w, zr.h)*0.45);
+        ctx.fillStyle = 'rgba(220,200,240,0.10)';
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.restore();
+      rafId = requestAnimationFrame(drawFigure);
+    }
+    drawFigure();
+
+    let zoneChosen = false;
+    WZ.forEach(zone => {
+      const zr = zoneRect(zone);
+      const hit = document.createElement('button');
+      hit.type = 'button';
+      hit.style.cssText = 'position:absolute;left:' + zr.x + 'px;top:' + zr.y + 'px;width:' + zr.w + 'px;height:' + zr.h + 'px;background:none;border:none;cursor:pointer;z-index:3;-webkit-tap-highlight-color:transparent;';
+      hit.addEventListener('pointerup', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        if (zoneChosen || !isCurrentActivity(token)) return;
+        zoneChosen = true;
+        activeZone = zone;
+        decBodySpot = zone.label[lang] || zone.label.en;
+        decSomaticTone = '';
+        decSomaticSpoken = '';
+        rwPlayZoneTone(zone.key);
+        qEl.style.opacity = '0';
+        tapEl.style.opacity = '0';
+        watermarkEl.style.opacity = '0';
+        ceremonyEl.style.top = (zr.y + zr.h/2) + 'px';
+        ceremonyEl.style.opacity = '1';
+        ceremonyEl.style.color = 'rgba(220,200,240,0.92)';
+        ceremonyEl.style.textShadow = '0 0 40px rgba(180,160,200,0.55)';
+        Array.from(wrap.querySelectorAll('button')).forEach(b => { b.style.pointerEvents = 'none'; });
+        logSession({ type: 'somatic', shadow: decStateName, zone: decBodySpot, ts: Date.now() });
+        activityTimeout(token, () => {
+          wrap.style.opacity = '0';
+          c.style.opacity = '0';
+          ceremonyEl.style.opacity = '0';
+          activityTimeout(token, () => {
+            if (rafId) cancelAnimationFrame(rafId);
+            if (wrap.parentNode) wrap.parentNode.removeChild(wrap);
+            const apiKey = lsGet('field_api_key');
+            if (apiKey) window.startDissolutionChamber();
+            else rwStartBreath();
+          }, 360);
+        }, 680);
+      });
+      wrap.appendChild(hit);
+    });
+
+    requestAnimationFrame(() => { wrap.style.opacity = '1'; });
+  };
+})();
