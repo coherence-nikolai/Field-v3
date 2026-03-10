@@ -1401,7 +1401,7 @@ function showScreen(id, postCb) {
       if (token !== screenTransitionToken) return;
       next.style.transition = 'opacity 0.72s ease';
       next.style.opacity = '1';
-      activityTimeout(homeToken, () => {
+      setTimeout(() => {
         if (token !== screenTransitionToken) return;
         next.style.opacity = '';
         next.style.transition = '';
@@ -1612,8 +1612,8 @@ function clearGhosts() {
     setTimeout(() => { gh.innerHTML = ''; gh.style.transition = ''; }, 450); }
 }
 function goHome() {
-  const homeToken = nextActivityToken();
   closeSettings();
+  const homeToken = nextActivityToken();
   const cameFromDecohere = currentMode === 'witness-end' || currentMode === 'witness';
   currentMode = 'home';
   clearAllBreath(); clearObserver(); clearAllDec();
@@ -1724,13 +1724,13 @@ function goHome() {
           document.querySelectorAll('.movement').forEach((m, i) => {
             setTimeout(() => {
               m.classList.add('lit');
-              activityTimeout(homeToken, () => m.classList.remove('lit'), 1200);
+              setTimeout(() => m.classList.remove('lit'), 1200);
             }, i * 180);
           });
         }, 1800);
       }, 100);
     } else {
-      activityTimeout(homeToken, () => { initSpParticles(12); tryDrone(); }, 200);
+      setTimeout(() => { if (!isCurrentActivity(homeToken)) return; initSpParticles(12); tryDrone(); }, 200);
     }
     tryDrone();
     // Companion check-in — disabled on auto-show, user can access via settings
@@ -3762,89 +3762,118 @@ function getDecBodyPos(spot) {
   };
 }
 
+
 function startDecohere() {
   const witnessToken = nextActivityToken();
   if (navigator.vibrate) navigator.vibrate(18);
   initAudio();
   if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(()=>{});
   playDecohereSignature();
-  currentMode = 'witness'; showBackBtn();
-  document.getElementById('backBtn').onclick = () => goHome();
+  currentMode = 'witness';
+  showBackBtn();
+  const backBtn = document.getElementById('backBtn');
+  if (backBtn) backBtn.onclick = () => goHome();
+
   clearGhosts();
   applyDecoherePalette();
-  fadeDrone(true, 1.5); spParticles = [];
+  fadeDrone(true, 1.5);
+  spParticles = [];
 
+  const t = TRANSLATIONS[lang];
+  const scr = document.getElementById('s-witness');
   const grid = document.getElementById('shadowGrid');
+  const arrLine = document.getElementById('decArrivalLine');
+  const arrSub  = document.getElementById('decArrivalSub');
+  const tapHint = document.getElementById('decTapHint');
+
+  if (scr) {
+    scr.style.paddingTop = '';
+    scr.style.gap = '';
+  }
   if (grid) {
     grid.innerHTML = '';
     grid.style.opacity = '0';
     grid.style.transform = 'translateY(10px)';
     grid.style.transition = 'none';
   }
-
-  activityTimeout(witnessToken, () => {
-    initSpParticles(10);
-    spParticles.forEach(p => {
-      p.targetAlpha = 0.18 + Math.random()*0.15;
-      p.targetClarity = 0;
-      p.phV *= 0.4;
-    });
-  }, 220);
-
-  const t = TRANSLATIONS[lang];
-  const scr = document.getElementById('s-witness');
-  if (scr) { scr.style.paddingTop = ''; scr.style.gap = ''; }
-  const arrLine = document.getElementById('decArrivalLine');
-  const arrSub  = document.getElementById('decArrivalSub');
-  arrLine.textContent = t.decArrivalLine;
-  arrSub.textContent  = t.decArrivalSub;
-  arrLine.style.transition = 'none'; arrLine.style.opacity = '0'; arrLine.style.transform = 'translateY(8px)';
-  arrSub.style.transition  = 'none'; arrSub.style.opacity  = '0'; arrSub.style.transform = 'translateY(8px)';
-  const tapHint = document.getElementById('decTapHint');
+  if (arrLine) {
+    arrLine.textContent = t.decArrivalLine;
+    arrLine.style.opacity = '0';
+    arrLine.style.transform = 'translateY(8px)';
+    arrLine.style.transition = 'none';
+  }
+  if (arrSub) {
+    arrSub.textContent = t.decArrivalSub;
+    arrSub.style.opacity = '0';
+    arrSub.style.transform = 'translateY(8px)';
+    arrSub.style.transition = 'none';
+  }
   if (tapHint) tapHint.textContent = '';
 
   showScreen('s-witness', () => {
     if (!isCurrentActivity(witnessToken)) return;
+
+    activityTimeout(witnessToken, () => {
+      initSpParticles(10);
+      spParticles.forEach(p => {
+        p.targetAlpha = 0.18 + Math.random() * 0.15;
+        p.targetClarity = 0;
+        p.phV *= 0.4;
+      });
+    }, 180);
+
     activityFrame(witnessToken, () => {
-      if (!isCurrentActivity(witnessToken)) return;
-      arrLine.style.transition = 'opacity 0.42s ease, transform 0.42s ease';
-      arrSub.style.transition  = 'opacity 0.42s ease, transform 0.42s ease';
-      arrLine.style.opacity = '1';
-      arrSub.style.opacity  = '1';
-      arrLine.style.transform = 'translateY(0)';
-      arrSub.style.transform  = 'translateY(0)';
-      activityTimeout(witnessToken, () => buildShadowGrid(witnessToken), 140);
+      if (arrLine) arrLine.style.transition = 'opacity .55s ease, transform .55s ease';
+      if (arrSub)  arrSub.style.transition  = 'opacity .55s ease, transform .55s ease';
+      if (arrLine) {
+        arrLine.style.opacity = '1';
+        arrLine.style.transform = 'translateY(0)';
+      }
+      activityTimeout(witnessToken, () => {
+        if (arrSub) {
+          arrSub.style.opacity = '1';
+          arrSub.style.transform = 'translateY(0)';
+        }
+      }, 120);
+      activityTimeout(witnessToken, () => buildShadowGrid(witnessToken), 220);
     });
   });
 }
+
+
 
 function buildShadowGrid(token = activityToken) {
   const grid = document.getElementById('shadowGrid');
   if (!grid) return;
 
-  grid.innerHTML = '';
-  grid.style.cssText = 'width:100%;flex:1;min-height:0;display:flex;flex-wrap:wrap;' +
-    'align-content:center;justify-content:center;gap:clamp(8px,2.5vw,16px);' +
-    'padding:0 clamp(16px,5vw,32px);opacity:0;transform:translateY(14px);' +
-    'transition:opacity 0.45s ease, transform 0.45s ease;';
-
-  const en = SHADOW_STATES.en, es = SHADOW_STATES.es;
+  const en = SHADOW_STATES.en;
+  const es = SHADOW_STATES.es;
   let selected = false;
+
+  grid.innerHTML = '';
+  grid.style.cssText =
+    'width:100%;flex:1;min-height:0;display:flex;flex-wrap:wrap;' +
+    'align-content:center;justify-content:center;gap:clamp(8px,2.5vw,16px);' +
+    'padding:0 clamp(16px,5vw,32px);' +
+    'opacity:0;transform:translateY(10px);transition:opacity .45s ease, transform .45s ease;';
 
   en.forEach((name, i) => {
     const displayName = lang === 'en' ? name : es[i];
     const o = document.createElement('button');
     o.className = 'shadow-orb';
-    const dur = (2.2 + Math.random() * 1.8).toFixed(2);
-    const delay = (Math.random() * -3).toFixed(2);
+    const dur = (2.4 + Math.random() * 1.2).toFixed(2);
+    const delay = (Math.random() * -2).toFixed(2);
     o.style.animationDuration = dur + 's';
     o.style.animationDelay = delay + 's';
     o.style.opacity = '1';
-    o.style.transform = 'translateY(0)';
-    o.style.transition = 'opacity 0.35s ease, color .3s ease, border-color .3s ease, background .3s ease, transform .35s ease';
+    o.style.transition = 'opacity .28s ease, color .28s ease, border-color .28s ease, background .28s ease, transform .28s ease';
     o.textContent = displayName;
 
-    const go = () => {
+    const go = (e) => {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
       if (selected || !isCurrentActivity(token)) return;
       selected = true;
       if (audioCtx) playTap();
@@ -3852,7 +3881,7 @@ function buildShadowGrid(token = activityToken) {
       decStateNameES = es[i];
 
       grid.querySelectorAll('.shadow-orb').forEach(el => {
-        el.style.transition = 'opacity 0.35s ease, color 0.35s ease, border-color 0.35s ease, background 0.35s ease, transform 0.35s ease';
+        el.style.pointerEvents = 'none';
         if (el === o) {
           el.style.opacity = '1';
           el.style.transform = 'scale(1.02)';
@@ -3860,24 +3889,16 @@ function buildShadowGrid(token = activityToken) {
           el.style.borderColor = 'rgba(201,169,110,.85)';
           el.style.background = 'rgba(201,169,110,.10)';
         } else {
-          el.style.opacity = '0.05';
+          el.style.opacity = '0.08';
           el.style.transform = 'scale(0.985)';
-          el.style.pointerEvents = 'none';
         }
       });
 
-      activityTimeout(token, () => {
-        if (!isCurrentActivity(token)) return;
-        showDecBodyMap();
-      }, 240);
+      activityTimeout(token, () => showDecBodyMap(), 260);
     };
 
-    o.addEventListener('click', go, { passive: true });
-    o.addEventListener('touchend', e => {
-      e.preventDefault();
-      go();
-    }, { passive: false });
-
+    o.addEventListener('click', go, { passive: false });
+    o.addEventListener('touchend', go, { passive: false });
     grid.appendChild(o);
   });
 
@@ -3887,6 +3908,7 @@ function buildShadowGrid(token = activityToken) {
     grid.style.transform = 'translateY(0)';
   });
 }
+
 
 // ══════════════════════════════════════
 // SHARED BODY MAP — used by both Decohere and Collapse
@@ -4036,16 +4058,16 @@ function showBodyMap(mode, payload) {
     wrap.appendChild(fc);
     const fx = fc.getContext('2d');
 
-    // Figure layout — enlarged for larger iPhone screens without colliding with the prompt
-    const FIG_TOP = 0.035, FIG_BOT = 0.84;
-    const FIG_L = 0.17, FIG_R = 0.83;
+    // Figure layout — enlarged for iPhone Pro Max while keeping the lower prompt area clear
+    const FIG_TOP = 0.03, FIG_BOT = 0.86;
+    const FIG_L = 0.20, FIG_R = 0.80;
     const figH = (FIG_BOT - FIG_TOP) * H;
     const figW = (FIG_R - FIG_L) * W;
     const figX = FIG_L * W, figY = FIG_TOP * H;
 
     // Shadow word watermark — very faint behind figure
     const watermarkEl = document.createElement('div');
-    watermarkEl.style.cssText = `position:absolute;left:50%;top:48%;
+    watermarkEl.style.cssText = `position:absolute;left:50%;top:44%;
       transform:translate(-50%,-50%);
       font-size:clamp(38px,11vw,72px);font-weight:300;
       font-family:'Cormorant Garamond',Georgia,serif;font-style:italic;
