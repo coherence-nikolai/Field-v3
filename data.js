@@ -45,8 +45,8 @@ const TRANSLATIONS = {
     apiNote:        'stored locally · never transmitted',
 
     // Session
-    sessionCount: n => n === 1 ? 'first session' : `${n} sessions`,
-    streakLabel: n => `${n} days`,
+    sessionCount: n => n === 1 ? 'you have been here once' : `you have been here ${n} times`,
+    streakLabel: n => `${n} days returning`,
 
     // AI system prompts are in app.js
   },
@@ -83,8 +83,8 @@ const TRANSLATIONS = {
 
     apiNote:        'guardado localmente · nunca transmitido',
 
-    sessionCount: n => n === 1 ? 'primera sesión' : `${n} sesiones`,
-    streakLabel: n => `${n} días`,
+    sessionCount: n => n === 1 ? 'has estado aquí una vez' : `has estado aquí ${n} veces`,
+    streakLabel: n => `${n} días regresando`,
   }
 };
 

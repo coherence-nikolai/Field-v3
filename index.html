@@ -480,8 +480,29 @@ b, strong { font-weight: 400; }
   80%  { transform: translate(-0.3px, 0.3px); }
 }
 
-.enter-continue {
-  position: fixed;
+.something-else-btn {
+  font-family: var(--serif);
+  font-size: clamp(16px,4vw,20px);
+  font-style: italic;
+  color: rgba(237,224,212,.32);
+  background: none; border: none;
+  cursor: pointer;
+  padding: 16px 24px;
+  -webkit-tap-highlight-color: transparent;
+  transition: color .3s ease;
+  letter-spacing: .04em;
+  margin-top: 8px;
+}
+.something-else-btn:hover { color: rgba(237,224,212,.55); }
+
+/* Freq screen */
+#s-freq {
+  justify-content: center;
+  gap: clamp(18px,4.5vw,28px);
+  padding: clamp(70px,16vw,90px) 16px 110px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
   bottom: 32px;
   left: 50%; transform: translateX(-50%);
   font-family: var(--sans);
@@ -992,7 +1013,6 @@ body.fs-large .enter-question { font-size: clamp(26px,7vw,40px); }
 
   <button class="home-enter-btn" id="homeEnterBtn" onclick="startNotice()">
     <span class="home-enter-question" id="homeArrival"></span>
-    <span class="home-enter-sub" id="homeArrivalSub"></span>
   </button>
 
   <div class="home-bottom">
@@ -1006,16 +1026,15 @@ body.fs-large .enter-question { font-size: clamp(26px,7vw,40px); }
 
 <!-- ENTER — what are you holding? -->
 <div class="screen" id="s-enter">
-  <div class="enter-title" id="enterTitle"></div>
   <div class="enter-question" id="enterQuestion"></div>
 
   <div class="enter-input-wrap">
-    <input class="enter-input" id="enterInput" type="text"
-      autocomplete="off" autocorrect="off" autocapitalize="off"
-      spellcheck="false" />
-    <div class="enter-or" id="enterOr"></div>
     <div class="contraction-scroll">
       <div class="contraction-grid" id="contractionGrid"></div>
+      <button class="something-else-btn" id="somethingElseBtn" onclick="toggleSomethingElse()"></button>
+      <input class="enter-input" id="enterInput" type="text"
+        autocomplete="off" autocorrect="off" autocapitalize="off"
+        spellcheck="false" style="display:none;" />
     </div>
   </div>
 
@@ -1065,8 +1084,8 @@ body.fs-large .enter-question { font-size: clamp(26px,7vw,40px); }
   </div>
 </div>
 
-<!-- ANCHOR PHASE — polarity reveal + frequency + breath -->
-<div class="screen" id="s-anchor" style="padding-top:clamp(60px,14vw,80px);">
+<!-- ANCHOR SCREEN 1 — polarity reveal -->
+<div class="screen" id="s-anchor">
   <div class="phase-indicator">
     <div class="phase-dot done"></div>
     <div class="phase-dot done"></div>
@@ -1079,17 +1098,25 @@ body.fs-large .enter-question { font-size: clamp(26px,7vw,40px); }
     <div class="polarity-heavy" id="polarityHeavy"></div>
     <div class="polarity-and" id="polarityAnd">and</div>
     <div class="polarity-light" id="polarityLight"></div>
-    <div class="polarity-both" id="polarityBoth"></div>
-  </div>
-
-  <div style="display:flex;flex-direction:column;align-items:center;gap:12px;width:100%;">
-    <div class="freq-label" id="freqLabel"></div>
-    <div class="freq-grid" id="freqGrid"></div>
   </div>
 
   <div class="phase-nav">
-    <button class="phase-forward" id="fwdAnchor" style="opacity:0;pointer-events:none;" onclick="startBreath()"></button>
+    <button class="phase-forward" id="fwdAnchor1" style="opacity:0;pointer-events:none;" onclick="advanceToFreq()"></button>
   </div>
+</div>
+
+<!-- ANCHOR SCREEN 2 — frequency selection -->
+<div class="screen" id="s-freq">
+  <div class="phase-indicator">
+    <div class="phase-dot done"></div>
+    <div class="phase-dot done"></div>
+    <div class="phase-dot active"></div>
+    <div class="phase-dot"></div>
+  </div>
+  <div class="freq-label" id="freqLabel"></div>
+  <div class="freq-grid" id="freqGrid"></div>
+
+  <button class="phase-forward" id="fwdAnchor" style="opacity:0;pointer-events:none;position:fixed;bottom:32px;left:50%;transform:translateX(-50%);background:rgba(8,6,16,.92);border:1px solid rgba(200,130,110,.2);border-radius:999px;padding:14px 36px;" onclick="startBreath()"></button>
 </div>
 
 <!-- BREATH — inside anchor -->

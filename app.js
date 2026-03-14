@@ -601,18 +601,18 @@ function tryDrone() {
   if (!audioEnabled) return;
   initAudio(); if (!audioCtx) return;
   if (droneNodes.length) return;
-  // V2 drone: warmer, deeper — 396Hz root + 174Hz liberation + subtle violet harmonic
   if (audioCtx.state === 'suspended') { audioCtx.resume().then(startDrone); return; }
   startDrone();
 }
 function startDrone() {
   if (droneNodes.length) return;
-  [[396,0.018],[198,0.012],[174,0.009],[792,0.006]].forEach(([f,g]) => {
+  // Root drone: 396Hz (liberation/fear release) + deep sub + violet harmonic
+  [[396,0.016],[198,0.010],[99,0.007],[594,0.005]].forEach(([f,g]) => {
     const o = audioCtx.createOscillator();
     const gn = audioCtx.createGain();
     o.type = 'sine'; o.frequency.value = f;
     gn.gain.setValueAtTime(0, audioCtx.currentTime);
-    gn.gain.linearRampToValueAtTime(g, audioCtx.currentTime + 4);
+    gn.gain.linearRampToValueAtTime(g, audioCtx.currentTime + 5);
     o.connect(gn); gn.connect(audioCtx.destination); o.start();
     droneNodes.push({o, gn});
   });
@@ -623,7 +623,7 @@ function fadeDrone(out = true, dur = 2) {
     const now = audioCtx.currentTime;
     gn.gain.cancelScheduledValues(now);
     gn.gain.setValueAtTime(gn.gain.value, now);
-    gn.gain.linearRampToValueAtTime(out ? 0 : 0.018, now + dur);
+    gn.gain.linearRampToValueAtTime(out ? 0 : 0.016, now + dur);
   });
   if (out) setTimeout(() => {
     droneNodes.forEach(({o}) => { try { o.stop(); } catch(e) {} });
@@ -631,63 +631,72 @@ function fadeDrone(out = true, dur = 2) {
   }, (dur + 0.2) * 1000);
 }
 
-// Phase signature tones
-function playTone(freqs) {
-  if (!audioCtx) return;
-  freqs.forEach(([f, delay, gain]) => {
-    const o = audioCtx.createOscillator();
-    const g = audioCtx.createGain();
-    o.type = 'sine'; o.frequency.value = f;
-    const t0 = audioCtx.currentTime + delay;
+// ── PHASE SWELLS — harmonic pads, not chimes ──
+// Each phase: solfeggio-rooted frequency swell, like a breath of sound
+function playPhaseSwell(baseFreq, duration = 4.5) {
+  if (!audioEnabled || !audioCtx) return;
+  // Three harmonics form a warm chord
+  const ratios = [1, 1.5, 2, 2.5];
+  const gains  = [0.028, 0.018, 0.012, 0.007];
+  ratios.forEach((r, i) => {
+    const o  = audioCtx.createOscillator();
+    const g  = audioCtx.createGain();
+    const lp = audioCtx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 900;
+    o.type = 'sine';
+    o.frequency.value = baseFreq * r;
+    const t0 = audioCtx.currentTime;
+    const attack  = 0.8;
+    const sustain = duration * 0.5;
+    const release = duration - attack - sustain;
     g.gain.setValueAtTime(0, t0);
-    g.gain.linearRampToValueAtTime(gain, t0 + 0.15);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 3.5);
-    o.connect(g); g.connect(audioCtx.destination);
-    o.start(t0); o.stop(t0 + 4);
+    g.gain.linearRampToValueAtTime(gains[i], t0 + attack);
+    g.gain.setValueAtTime(gains[i], t0 + attack + sustain);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+    o.connect(lp); lp.connect(g); g.connect(audioCtx.destination);
+    o.start(t0); o.stop(t0 + duration + 0.1);
   });
 }
-const playNoticeSound   = () => playTone([[396,0,.035],[528,.25,.022],[792,.5,.012]]);
-const playHoldSound     = () => playTone([[288,0,.040],[216,.3,.025],[174,.6,.015]]);
-const playAnchorSound   = () => playTone([[528,0,.045],[660,.2,.028],[440,.4,.018]]);
-const playIntegrateSound= () => playTone([[432,0,.038],[648,.3,.022],[864,.6,.012]]);
-const playSelectTone    = () => playTone([[528,0,.030],[660,.1,.018]]);
-const playBackNav       = () => {
-  if (!audioCtx) return;
-  const o = audioCtx.createOscillator(), g = audioCtx.createGain();
-  o.type = 'sine';
-  o.frequency.setValueAtTime(440, audioCtx.currentTime);
-  o.frequency.exponentialRampToValueAtTime(220, audioCtx.currentTime + 0.4);
-  g.gain.setValueAtTime(0, audioCtx.currentTime);
-  g.gain.linearRampToValueAtTime(0.028, audioCtx.currentTime + 0.05);
-  g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.6);
-  o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime + 0.7);
-};
 
-// Breath tones
+// Solfeggio frequencies per phase
+const playNoticeSound    = () => playPhaseSwell(396);  // releasing fear
+const playHoldSound      = () => playPhaseSwell(432);  // grounding
+const playAnchorSound    = () => playPhaseSwell(528);  // transformation
+const playIntegrateSound = () => playPhaseSwell(639);  // connection
+
+// Breath tones — binaural-style beating between left/right harmonics
 function playBreathInhale() {
-  if (!audioCtx) return;
-  [[220,0],[330,.08],[440,.16]].forEach(([f,d]) => {
-    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  if (!audioEnabled || !audioCtx) return;
+  // Rising swell — 432Hz base, slight frequency spread creates beating
+  [[216, 0.018],[432, 0.022],[217, 0.012]].forEach(([f, g], i) => {
+    const o = audioCtx.createOscillator();
+    const gn = audioCtx.createGain();
     o.type = 'sine';
-    o.frequency.setValueAtTime(f * 0.85, audioCtx.currentTime + d);
-    o.frequency.linearRampToValueAtTime(f, audioCtx.currentTime + d + 3.5);
-    const t0 = audioCtx.currentTime + d;
-    g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(0.025, t0 + .6);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 4.8);
-    o.connect(g); g.connect(audioCtx.destination); o.start(t0); o.stop(t0 + 5.2);
+    o.frequency.setValueAtTime(f * 0.92, audioCtx.currentTime);
+    o.frequency.linearRampToValueAtTime(f, audioCtx.currentTime + 4);
+    const t0 = audioCtx.currentTime + i * 0.06;
+    gn.gain.setValueAtTime(0, t0);
+    gn.gain.linearRampToValueAtTime(g, t0 + 0.7);
+    gn.gain.exponentialRampToValueAtTime(0.0001, t0 + 5);
+    o.connect(gn); gn.connect(audioCtx.destination);
+    o.start(t0); o.stop(t0 + 5.2);
   });
 }
 function playBreathExhale() {
-  if (!audioCtx) return;
-  [[440,0],[330,.1],[220,.2]].forEach(([f,d]) => {
-    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  if (!audioEnabled || !audioCtx) return;
+  // Descending swell — 528Hz into 432Hz
+  [[528, 0.020],[264, 0.014],[529, 0.010]].forEach(([f, g], i) => {
+    const o = audioCtx.createOscillator();
+    const gn = audioCtx.createGain();
     o.type = 'sine';
-    o.frequency.setValueAtTime(f, audioCtx.currentTime + d);
-    o.frequency.exponentialRampToValueAtTime(f * 0.72, audioCtx.currentTime + d + 4.5);
-    const t0 = audioCtx.currentTime + d;
-    g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(0.030, t0 + .3);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 5.5);
-    o.connect(g); g.connect(audioCtx.destination); o.start(t0); o.stop(t0 + 6);
+    o.frequency.setValueAtTime(f, audioCtx.currentTime + i * 0.08);
+    o.frequency.exponentialRampToValueAtTime(f * 0.78, audioCtx.currentTime + 5.5);
+    const t0 = audioCtx.currentTime + i * 0.08;
+    gn.gain.setValueAtTime(0, t0);
+    gn.gain.linearRampToValueAtTime(g, t0 + 0.4);
+    gn.gain.exponentialRampToValueAtTime(0.0001, t0 + 5.8);
+    o.connect(gn); gn.connect(audioCtx.destination);
+    o.start(t0); o.stop(t0 + 6);
   });
 }
 
@@ -730,12 +739,15 @@ function showScreen(id, cb) {
 }
 
 // ── CHROME ──
+let _backFn = null;
 function showBackBtn(fn) {
+  _backFn = fn;
   const btn = document.getElementById('backBtn');
   btn.style.opacity = '1'; btn.style.pointerEvents = 'all';
-  btn.onclick = () => { if (audioCtx) playBackNav(); fn(); };
+  btn.onclick = () => { if (_backFn) _backFn(); };
 }
 function hideBackBtn() {
+  _backFn = null;
   const btn = document.getElementById('backBtn');
   btn.style.opacity = '0'; btn.style.pointerEvents = 'none';
 }
@@ -806,12 +818,8 @@ function setLang(l) {
 function applyLang() {
   document.documentElement.lang = lang;
   const t = TRANSLATIONS[lang];
-  // Home
-  const ha  = document.getElementById('homeArrival');
-  const hsub= document.getElementById('homeArrivalSub');
-  if (ha)   ha.textContent   = t.arrival;
-  if (hsub) hsub.textContent = t.arrivalSub;
-  // Lang segs
+  const ha = document.getElementById('homeArrival');
+  if (ha) ha.textContent = t.arrival;
   const en = document.getElementById('langEn');
   const es = document.getElementById('langEs');
   if (en) en.classList.toggle('active', lang === 'en');
@@ -829,7 +837,7 @@ function updateHomeCount() {
   const el   = document.getElementById('homeCount');
   const t    = TRANSLATIONS[lang];
   if (!el) return;
-  if (n > 0) {
+  if (n >= 3) {
     const today     = new Date().toDateString();
     const lastVisit = lsGet('f2_last_visit');
     const streak    = parseInt(lsGet('f2_streak') || '0');
@@ -839,10 +847,12 @@ function updateHomeCount() {
       s = (lastVisit === yesterday) ? streak + 1 : 1;
       lsSet('f2_streak', s); lsSet('f2_last_visit', today);
     }
+    // Field-language: noticing not counting
     let txt = t.sessionCount(n);
-    if (s >= 2) txt += `  ·  ${t.streakLabel(s)}`;
+    if (s >= 3) txt += `  ·  ${t.streakLabel(s)}`;
     el.textContent = txt;
   } else { el.textContent = ''; }
+}
 }
 
 // ── HOME ──
@@ -871,17 +881,6 @@ function startEnter(fromPhase) {
   initAudio();
   if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
 
-  // Title based on which phase initiated
-  const titles = {
-    notice:    t.noticeLabel,
-    hold:      t.holdLabel,
-    anchor:    t.anchorLabel,
-    integrate: t.integrateLabel,
-  };
-
-  setText('enterTitle',    titles[fromPhase] || t.noticeLabel);
-  setText('enterOr',       lang === 'en' ? '· or choose ·' : '· o elige ·');
-
   const qEl = document.getElementById('enterQuestion');
   if (qEl) qEl.textContent = t.arrival;
 
@@ -889,7 +888,11 @@ function startEnter(fromPhase) {
   if (inp) {
     inp.value = '';
     inp.placeholder = lang === 'en' ? 'name it...' : 'nómbralo...';
+    inp.style.display = 'none'; // hidden by default
   }
+
+  const seb = document.getElementById('somethingElseBtn');
+  if (seb) seb.textContent = lang === 'en' ? 'something else...' : 'algo más...';
 
   // Populate contractions
   const grid = document.getElementById('contractionGrid');
@@ -905,10 +908,9 @@ function startEnter(fromPhase) {
       btn.style.animationDelay = (Math.random() * -2).toFixed(2) + 's';
       btn.addEventListener('click', () => {
         if (!isAlive(tok)) return;
-        currentContraction = CONTRACTIONS.en[i]; // always store EN key
-        if (inp) inp.value = name;
+        currentContraction = CONTRACTIONS.en[i];
+        if (inp) { inp.value = name; }
         showContinue();
-        if (audioCtx) playSelectTone();
         if (navigator.vibrate) navigator.vibrate(10);
       });
       btn.addEventListener('touchend', e => { e.preventDefault(); btn.click(); });
@@ -922,7 +924,6 @@ function startEnter(fromPhase) {
     contBtn.classList.remove('ready');
   }
 
-  // Input listener
   if (inp) {
     inp.oninput = () => {
       if (inp.value.trim().length > 1) showContinue();
@@ -934,11 +935,24 @@ function startEnter(fromPhase) {
   }
 
   showBackBtn(() => goHome());
-  showScreen('s-enter', () => {
-    if (isAlive(tok)) setTimeout(() => inp && inp.focus(), 400);
-  });
-
+  showScreen('s-enter', () => {});
   window._enterFromPhase = fromPhase;
+}
+
+function toggleSomethingElse() {
+  const inp = document.getElementById('enterInput');
+  const seb = document.getElementById('somethingElseBtn');
+  if (!inp) return;
+  if (inp.style.display === 'none') {
+    inp.style.display = 'block';
+    setTimeout(() => inp.focus(), 100);
+    if (seb) seb.style.opacity = '0.4';
+  } else {
+    inp.style.display = 'none';
+    inp.value = '';
+    hideContinue();
+    if (seb) seb.style.opacity = '1';
+  }
 }
 
 function showContinue() {
@@ -1036,7 +1050,6 @@ function launchNotice() {
     document.querySelectorAll('.al').forEach(a => a.classList.add('on'));
   });
 }
-
 async function fetchNoticeReflection(tok) {
   const apiKey = lsGet('f2_api_key');
   if (!apiKey) return;
@@ -1076,7 +1089,7 @@ function launchHold() {
   setText('skipHold', t.skipBtn);
 
   setWaveState('hold');
-  showBackBtn(() => goHome());
+  showBackBtn(() => launchNotice());
   showScreen('s-hold', () => {
     setTimeout(() => fetchHoldReflection(tok), 2800);
   });
@@ -1101,82 +1114,59 @@ function advanceToAnchor() {
   launchAnchor();
 }
 
-// ── ANCHOR PHASE — the polarity reveal ──
+// ── ANCHOR SCREEN 1 — polarity reveal only ──
 function launchAnchor() {
   const tok = nextToken();
   const t   = TRANSLATIONS[lang];
-  bgDimTgt  = 0.35;
 
   setText('pname-anchor', t.anchorLabel.toUpperCase());
 
-  // Find complementary truth
   const seedKey      = currentContraction;
   const seedEN       = POLARITY_SEEDS.en[seedKey] || '';
   const seedES       = POLARITY_SEEDS.es[seedKey] || '';
   const complementTxt= lang === 'en' ? seedEN : seedES;
 
-  // Reset polarity elements
   const pH  = document.getElementById('polarityHeavy');
   const pAnd= document.getElementById('polarityAnd');
   const pL  = document.getElementById('polarityLight');
-  const pB  = document.getElementById('polarityBoth');
-  [pH,pAnd,pL,pB].forEach(el => { if(el) el.classList.remove('visible'); });
+  [pH, pAnd, pL].forEach(el => { if (el) el.classList.remove('visible'); });
 
-  const contrastDisplayName = CONTRACTIONS[lang][CONTRACTIONS.en.indexOf(currentContraction)] || currentContraction;
-  if (pH)  pH.textContent  = lang === 'en' ? `I am carrying ${contrastDisplayName}.` : `Estoy cargando ${contrastDisplayName}.`;
+  const displayName = CONTRACTIONS[lang][CONTRACTIONS.en.indexOf(currentContraction)] || currentContraction;
+  if (pH)   pH.textContent  = lang === 'en' ? `I am carrying ${displayName}.` : `Estoy cargando ${displayName}.`;
   if (pAnd) pAnd.textContent = lang === 'en' ? 'and' : 'y';
-  if (pL)  pL.textContent  = complementTxt;
-  if (pB)  pB.textContent  = TRANSLATIONS[lang].bothTrue;
+  if (pL)   pL.textContent  = complementTxt;
 
-  // Frequency selection
-  setText('freqLabel', lang === 'en' ? 'which frequency calls you?' : '¿qué frecuencia te llama?');
-  const freqGrid = document.getElementById('freqGrid');
-  if (freqGrid) {
-    freqGrid.innerHTML = '';
-    FREQUENCIES[lang].forEach((f, i) => {
-      const btn = document.createElement('button');
-      btn.className = 'freq-btn';
-      btn.innerHTML = `<div class="freq-name">${f.name}</div><div class="freq-hint">${f.hint}</div>`;
-      btn.addEventListener('click', () => {
-        if (!isAlive(tok)) return;
-        document.querySelectorAll('.freq-btn').forEach(b => b.classList.remove('chosen'));
-        btn.classList.add('chosen');
-        chosenFrequency = FREQUENCIES.en[i].name;
-        if (audioCtx) playSelectTone();
-        if (navigator.vibrate) navigator.vibrate(10);
-        // Show forward button
-        const fwd = document.getElementById('fwdAnchor');
-        if (fwd) { fwd.style.opacity='1'; fwd.style.pointerEvents='all'; fwd.textContent = t.continueBtn; }
-      });
-      freqGrid.appendChild(btn);
-    });
-  }
-
-  const fwd = document.getElementById('fwdAnchor');
-  if (fwd) { fwd.style.opacity='0'; fwd.style.pointerEvents='none'; }
+  const fwd = document.getElementById('fwdAnchor1');
+  if (fwd) { fwd.style.opacity = '0'; fwd.style.pointerEvents = 'none'; fwd.textContent = t.continueBtn; }
 
   setWaveState('anchor');
-  showBackBtn(() => goHome());
+  showBackBtn(() => launchHold());
   showScreen('s-anchor', () => {
-    // Stagger polarity reveal
-    setTimeout(() => pH  && pH.classList.add('visible'),  300);
-    setTimeout(() => pAnd && pAnd.classList.add('visible'), 1200);
+    // Slow stagger — each truth gets space to land
+    setTimeout(() => { if (!isAlive(tok)) return; if (pH) pH.classList.add('visible'); }, 700);
+    setTimeout(() => { if (!isAlive(tok)) return; if (pAnd) pAnd.classList.add('visible'); }, 2400);
     setTimeout(() => {
       if (!isAlive(tok)) return;
-      // If no seed, fetch from AI
       if (!complementTxt && lsGet('f2_api_key')) {
-        fetchPolarityComplement(tok, pL, pB);
+        fetchPolarityComplement(tok, pL, fwd);
       } else {
-        setTimeout(() => pL && pL.classList.add('visible'), 400);
-        setTimeout(() => pB && pB.classList.add('visible'), 1600);
+        if (pL) pL.classList.add('visible');
+        setTimeout(() => {
+          if (!isAlive(tok) || !fwd) return;
+          fwd.style.opacity = '1'; fwd.style.pointerEvents = 'all';
+        }, 1800);
       }
-    }, 1400);
+    }, 4000);
   });
 }
 
-async function fetchPolarityComplement(tok, pL, pB) {
+async function fetchPolarityComplement(tok, pL, fwd) {
   const apiKey = lsGet('f2_api_key');
-  if (!apiKey) return;
+  if (!apiKey) {
+    if (pL) pL.classList.add('visible');
+    setTimeout(() => { if (fwd) { fwd.style.opacity='1'; fwd.style.pointerEvents='all'; }}, 1000);
+    return;
+  }
   const prompt = `The person is carrying "${currentContraction}". Find the complementary truth — not the opposite, the thing that is ALSO true from lived experience. One sentence, starting with "And". Max 20 words.`;
   try {
     const res = await callClaude(prompt, POLARITY_SYSTEM);
@@ -1184,12 +1174,96 @@ async function fetchPolarityComplement(tok, pL, pB) {
     if (res && pL) {
       pL.textContent = res;
       pL.classList.add('visible');
-      setTimeout(() => { if (isAlive(tok) && pB) pB.classList.add('visible'); }, 1400);
+      setTimeout(() => {
+        if (!isAlive(tok) || !fwd) return;
+        fwd.style.opacity = '1'; fwd.style.pointerEvents = 'all';
+      }, 1800);
     }
   } catch(e) {
     if (pL) pL.classList.add('visible');
-    setTimeout(() => { if (pB) pB.classList.add('visible'); }, 1000);
+    setTimeout(() => { if (fwd) { fwd.style.opacity='1'; fwd.style.pointerEvents='all'; }}, 1000);
   }
+}
+
+// ── ANCHOR SCREEN 2 — frequency selection ──
+const FREQ_MAP = {
+  Anxious:      ['Steady','Present','Trusting','Held'],
+  Afraid:       ['Steady','Trusting','Held','Present'],
+  Dreading:     ['Present','Trusting','Steady','Open'],
+  Panicking:    ['Steady','Present','Held','Spacious'],
+  Unsafe:       ['Held','Steady','Trusting','Present'],
+  Overwhelmed:  ['Spacious','Steady','Present','Clear'],
+  Scattered:    ['Clear','Present','Steady','Spacious'],
+  Fragmented:   ['Spacious','Held','Clear','Steady'],
+  Spinning:     ['Steady','Present','Spacious','Clear'],
+  Flooded:      ['Spacious','Steady','Present','Held'],
+  Stuck:        ['Open','Clear','Trusting','Present'],
+  Frozen:       ['Open','Trusting','Present','Steady'],
+  Paralysed:    ['Present','Open','Steady','Trusting'],
+  Trapped:      ['Open','Spacious','Trusting','Clear'],
+  Contracted:   ['Open','Spacious','Luminous','Trusting'],
+  Heavy:        ['Spacious','Held','Open','Luminous'],
+  Exhausted:    ['Held','Spacious','Steady','Present'],
+  Depleted:     ['Held','Steady','Spacious','Trusting'],
+  Defeated:     ['Trusting','Open','Held','Luminous'],
+  Hopeless:     ['Luminous','Trusting','Open','Held'],
+  Disconnected: ['Held','Open','Present','Spacious'],
+  Alone:        ['Held','Present','Open','Trusting'],
+  Unseen:       ['Present','Held','Luminous','Open'],
+  Abandoned:    ['Held','Trusting','Present','Steady'],
+  Invisible:    ['Luminous','Present','Held','Open'],
+  Unworthy:     ['Luminous','Trusting','Held','Present'],
+  Ashamed:      ['Held','Luminous','Open','Trusting'],
+  'Not enough': ['Luminous','Trusting','Spacious','Open'],
+  Broken:       ['Held','Trusting','Open','Luminous'],
+  Hollow:       ['Luminous','Open','Held','Spacious'],
+  Angry:        ['Spacious','Clear','Open','Present'],
+  Resentful:    ['Open','Clear','Spacious','Present'],
+  Bitter:       ['Open','Luminous','Spacious','Trusting'],
+  Jealous:      ['Open','Trusting','Spacious','Clear'],
+  Grieving:     ['Held','Spacious','Open','Luminous'],
+  Numb:         ['Present','Open','Luminous','Held'],
+  Flat:         ['Luminous','Open','Present','Spacious'],
+  Empty:        ['Open','Luminous','Spacious','Held'],
+  Absent:       ['Present','Open','Held','Luminous'],
+};
+
+function advanceToFreq() {
+  const tok = nextToken();
+  const t   = TRANSLATIONS[lang];
+
+  setText('freqLabel', lang === 'en' ? 'which frequency calls you?' : '¿qué frecuencia te llama?');
+
+  const smartKeys = FREQ_MAP[currentContraction] || ['Steady','Open','Clear','Present'];
+  const freqGrid  = document.getElementById('freqGrid');
+  if (freqGrid) {
+    freqGrid.innerHTML = '';
+    smartKeys.forEach(key => {
+      const enIdx = FREQUENCIES.en.findIndex(f => f.name === key);
+      if (enIdx < 0) return;
+      const f   = FREQUENCIES[lang][enIdx];
+      const btn = document.createElement('button');
+      btn.className = 'freq-btn';
+      btn.innerHTML = `<div class="freq-name">${f.name}</div><div class="freq-hint">${f.hint}</div>`;
+      btn.addEventListener('click', () => {
+        if (!isAlive(tok)) return;
+        document.querySelectorAll('.freq-btn').forEach(b => b.classList.remove('chosen'));
+        btn.classList.add('chosen');
+        chosenFrequency = FREQUENCIES.en[enIdx].name;
+        if (navigator.vibrate) navigator.vibrate(10);
+        const fwd = document.getElementById('fwdAnchor');
+        if (fwd) { fwd.style.opacity='1'; fwd.style.pointerEvents='all'; fwd.textContent = t.continueBtn; }
+      });
+      btn.addEventListener('touchend', e => { e.preventDefault(); btn.click(); });
+      freqGrid.appendChild(btn);
+    });
+  }
+
+  const fwd = document.getElementById('fwdAnchor');
+  if (fwd) { fwd.style.opacity='0'; fwd.style.pointerEvents='none'; }
+
+  showBackBtn(() => launchAnchor());
+  showScreen('s-freq');
 }
 
 // ── BREATH — inside Anchor ──
