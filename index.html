@@ -34,11 +34,11 @@
   --serif: 'Cormorant Garamond', Georgia, serif;
   --sans:  'DM Sans', system-ui, sans-serif;
 
-  --fs:  clamp(17px,4.2vw,21px);
-  --fl:  clamp(15px,3.8vw,18px);
-  --fh:  clamp(23px,5.8vw,30px);
-  --fxl: clamp(32px,8vw,46px);
-  --fwm: clamp(48px,13vw,74px);
+  --fs:  clamp(22px,5.5vw,28px);
+  --fl:  clamp(20px,5vw,26px);
+  --fh:  clamp(28px,7vw,36px);
+  --fxl: clamp(36px,9vw,52px);
+  --fwm: clamp(52px,14vw,80px);
 }
 
 /* ── RESET ── */
@@ -456,13 +456,13 @@ b, strong { font-weight: 400; }
 }
 .contraction-pill {
   font-family: var(--serif);
-  font-size: clamp(17px,4.5vw,22px);
+  font-size: clamp(22px,5.5vw,28px);
   font-style: italic;
-  color: rgba(200,130,110,.72);
+  color: rgba(200,130,110,.75);
   background: rgba(200,130,110,.06);
   border: 1px solid rgba(200,130,110,.22);
   border-radius: 999px;
-  padding: 8px 18px;
+  padding: 12px 24px;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   transition: all .25s ease;
@@ -532,7 +532,7 @@ b, strong { font-weight: 400; }
 
 .phase-name {
   font-family: var(--sans);
-  font-size: clamp(10px,2.5vw,12px);
+  font-size: clamp(13px,3.2vw,16px);
   letter-spacing: .22em;
   color: var(--rose-dim);
   text-transform: uppercase;
@@ -540,23 +540,25 @@ b, strong { font-weight: 400; }
 
 .phase-carrying {
   font-family: var(--serif);
-  font-size: clamp(28px,8vw,46px);
+  font-size: clamp(36px,10vw,56px);
   font-weight: 300;
   font-style: italic;
   color: var(--rose-bright);
   letter-spacing: .04em;
   line-height: 1.2;
-  /* breathing glow */
+  max-width: 90vw;
+  word-break: break-word;
   animation: fieldBreathe 5s ease-in-out infinite;
 }
 
 .phase-prompt {
   font-family: var(--serif);
-  font-size: clamp(16px,4.2vw,22px);
+  font-size: clamp(22px,5.5vw,28px);
   font-style: italic;
   color: var(--cream-dim);
   line-height: 1.7;
-  max-width: 300px;
+  max-width: 88vw;
+  padding: 0 16px;
 }
 
 /* Body location selector */
@@ -569,19 +571,19 @@ b, strong { font-weight: 400; }
 .body-zones {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
   justify-content: center;
-  max-width: 300px;
+  max-width: 90vw;
 }
 .body-zone {
   font-family: var(--sans);
-  font-size: clamp(11px,2.8vw,13px);
-  letter-spacing: .10em;
-  color: rgba(152,128,184,.62);
+  font-size: clamp(16px,4vw,20px);
+  letter-spacing: .08em;
+  color: rgba(152,128,184,.72);
   background: none;
-  border: 1px solid rgba(152,128,184,.18);
+  border: 1px solid rgba(152,128,184,.22);
   border-radius: 999px;
-  padding: 8px 16px; min-height: 36px;
+  padding: 12px 22px; min-height: 48px;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   transition: all .25s ease;
@@ -595,12 +597,13 @@ b, strong { font-weight: 400; }
 /* AI thread — witnessing presence */
 .ai-thread {
   font-family: var(--serif);
-  font-size: clamp(16px,4.2vw,21px);
+  font-size: clamp(20px,5vw,26px);
   font-style: italic;
   color: var(--thread);
   letter-spacing: .03em;
   line-height: 1.7;
-  max-width: 290px;
+  max-width: 88vw;
+  padding: 0 16px;
   text-align: center;
   opacity: 0;
   transition: opacity 2s ease;
@@ -629,12 +632,12 @@ b, strong { font-weight: 400; }
 }
 .phase-forward:hover { color: var(--rose); }
 .phase-skip {
-  font-size: clamp(10px,2.5vw,12px);
+  font-size: clamp(16px,4vw,20px);
   letter-spacing: .14em;
   color: var(--cream-ghost);
   background: none; border: none;
   cursor: pointer;
-  padding: 8px 20px; min-height: 36px;
+  padding: 12px 20px; min-height: 44px;
   -webkit-tap-highlight-color: transparent;
   transition: color .3s ease;
 }
@@ -657,11 +660,13 @@ b, strong { font-weight: 400; }
 
 .polarity-heavy {
   font-family: var(--serif);
-  font-size: clamp(20px,5.5vw,28px);
+  font-size: clamp(24px,6vw,32px);
   font-style: italic;
-  color: rgba(200,130,110,.65);
+  color: rgba(200,130,110,.75);
   text-align: center;
-  line-height: 1.4;
+  line-height: 1.5;
+  max-width: 88vw;
+  padding: 0 12px;
   opacity: 0;
   transition: opacity 1.4s ease;
 }
@@ -669,7 +674,7 @@ b, strong { font-weight: 400; }
 
 .polarity-and {
   font-family: var(--sans);
-  font-size: clamp(10px,2.5vw,12px);
+  font-size: clamp(14px,3.5vw,18px);
   letter-spacing: .28em;
   color: var(--cream-ghost);
   text-transform: uppercase;
@@ -680,11 +685,13 @@ b, strong { font-weight: 400; }
 
 .polarity-light {
   font-family: var(--serif);
-  font-size: clamp(20px,5.5vw,28px);
+  font-size: clamp(24px,6vw,32px);
   font-style: italic;
   color: var(--violet-bright);
   text-align: center;
-  line-height: 1.4;
+  line-height: 1.5;
+  max-width: 88vw;
+  padding: 0 12px;
   opacity: 0;
   transition: opacity 2s ease;
 }
@@ -692,12 +699,13 @@ b, strong { font-weight: 400; }
 
 .polarity-both {
   font-family: var(--sans);
-  font-size: clamp(11px,2.8vw,13px);
-  letter-spacing: .10em;
+  font-size: clamp(16px,4vw,20px);
+  letter-spacing: .06em;
   color: var(--cream-ghost);
   text-align: center;
-  line-height: 1.6;
-  max-width: 260px;
+  line-height: 1.7;
+  max-width: 88vw;
+  padding: 0 16px;
   opacity: 0;
   transition: opacity 1.6s ease;
 }
@@ -705,27 +713,27 @@ b, strong { font-weight: 400; }
 
 /* Frequency selection */
 .freq-label {
-  font-size: clamp(10px,2.5vw,12px);
-  letter-spacing: .20em;
+  font-size: clamp(14px,3.5vw,17px);
+  letter-spacing: .18em;
   color: var(--rose-dim);
   text-transform: uppercase;
 }
 .freq-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
-  max-width: 320px;
+  max-width: 88vw;
 }
 .freq-btn {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 14px 8px;
+  gap: 6px;
+  padding: 18px 10px;
   background: rgba(237,224,212,.02);
   border: 1px solid rgba(152,128,184,.12);
-  border-radius: 14px;
+  border-radius: 16px;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   transition: all .25s ease;
@@ -736,13 +744,13 @@ b, strong { font-weight: 400; }
 }
 .freq-name {
   font-family: var(--serif);
-  font-size: clamp(16px,4.2vw,20px);
+  font-size: clamp(22px,5.5vw,28px);
   font-style: italic;
   color: var(--violet-bright);
 }
 .freq-hint {
-  font-size: clamp(10px,2.4vw,11px);
-  letter-spacing: .06em;
+  font-size: clamp(13px,3.2vw,16px);
+  letter-spacing: .04em;
   color: var(--cream-ghost);
   text-align: center;
   line-height: 1.4;
@@ -757,11 +765,11 @@ b, strong { font-weight: 400; }
 
 .breath-word {
   position: fixed;
-  top: calc(50% - clamp(90px,20vw,130px));
+  top: calc(50% - clamp(110px,24vw,150px));
   left: 50%; transform: translateX(-50%);
   font-family: var(--sans);
-  font-size: clamp(12px,3vw,15px);
-  letter-spacing: .24em;
+  font-size: clamp(18px,4.5vw,22px);
+  letter-spacing: .22em;
   color: var(--cream-dim);
   text-align: center;
   text-transform: lowercase;
@@ -798,11 +806,12 @@ b, strong { font-weight: 400; }
 
 .integrate-witnessed {
   font-family: var(--serif);
-  font-size: clamp(20px,5.5vw,30px);
+  font-size: clamp(24px,6vw,32px);
   font-style: italic;
   color: var(--cream-dim);
   line-height: 1.6;
-  max-width: 300px;
+  max-width: 88vw;
+  padding: 0 16px;
   opacity: 0;
   transition: opacity 2.5s ease;
 }
@@ -812,8 +821,9 @@ b, strong { font-weight: 400; }
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
-  width: 100%; max-width: 300px;
+  gap: 14px;
+  width: 100%; max-width: 88vw;
+  padding: 0 16px;
   opacity: 0;
   transition: opacity 1.8s ease;
   pointer-events: none;
@@ -823,8 +833,8 @@ b, strong { font-weight: 400; }
 }
 
 .integrate-prompt {
-  font-size: clamp(11px,2.8vw,13px);
-  letter-spacing: .18em;
+  font-size: clamp(16px,4vw,20px);
+  letter-spacing: .14em;
   color: var(--cream-ghost);
   text-transform: lowercase;
 }
@@ -834,11 +844,11 @@ b, strong { font-weight: 400; }
   border-bottom: 1px solid rgba(152,128,184,.22);
   outline: none;
   font-family: var(--serif);
-  font-size: clamp(16px,4.2vw,20px);
+  font-size: clamp(22px,5.5vw,28px);
   font-style: italic;
   color: var(--cream-dim);
   width: 100%;
-  padding: 10px 0;
+  padding: 12px 0;
   text-align: center;
   caret-color: var(--rose);
   transition: border-color .4s ease;
@@ -848,12 +858,13 @@ b, strong { font-weight: 400; }
 
 .integrate-ai-response {
   font-family: var(--serif);
-  font-size: clamp(16px,4.2vw,20px);
+  font-size: clamp(22px,5.5vw,28px);
   font-style: italic;
   color: var(--thread);
   text-align: center;
   line-height: 1.7;
-  max-width: 280px;
+  max-width: 88vw;
+  padding: 0 16px;
   opacity: 0;
   transition: opacity 2.2s ease;
   min-height: 24px;

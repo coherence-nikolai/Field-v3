@@ -61,30 +61,30 @@ let waveCoherence = 0;  // 0–1: how ordered the interference pattern is
 let waveCoherenceTgt = 0;
 let waveTime = 0;
 
-// Rose wave (heavy / what is carried)
+// Rose wave — top edge
 const wRose = {
   freq: 0.0018,
-  amp: 0.11,
-  targetAmp: 0.11,
+  amp: 0.04,
+  targetAmp: 0.04,
   phase: 0,
   phaseV: 0.0018,
-  y: 0.52,        // vertical centre as fraction of height
-  targetY: 0.52,
+  y: 0.10,        // top edge
+  targetY: 0.10,
   color: '200,130,110',
   alpha: 0.55,
   targetAlpha: 0.55,
   thickness: 2.2,
 };
 
-// Violet wave (complement / what is also true)
+// Violet wave — bottom edge
 const wViolet = {
   freq: 0.0024,
-  amp: 0.09,
-  targetAmp: 0.09,
+  amp: 0.04,
+  targetAmp: 0.04,
   phase: Math.PI * 0.7,
   phaseV: 0.0022,
-  y: 0.48,
-  targetY: 0.48,
+  y: 0.90,        // bottom edge
+  targetY: 0.90,
   color: '152,128,184',
   alpha: 0.45,
   targetAlpha: 0.45,
@@ -136,22 +136,17 @@ class IParticle {
   isDead() { return this.life >= this.maxLife; }
 }
 
-// Spawn interference particles where waves intersect
+// Spawn interference particles in centre zone
 function spawnInterferenceParticles() {
-  if (waveCoherence < 0.15) return;
+  if (waveCoherence < 0.25) return;
   if (iParticles.length >= MAX_IPART) return;
-  if (Math.random() > 0.18 * waveCoherence) return;
+  if (Math.random() > 0.14 * waveCoherence) return;
 
   const w = innerWidth;
   const h = innerHeight;
-  // Find approximate intersection zone — between the two wave centres
-  const rY = wRose.y * h;
-  const vY = wViolet.y * h;
-  const midY = (rY + vY) / 2;
   const x = Math.random() * w;
-  // y near intersection, with spread based on coherence
-  const spread = (1 - waveCoherence) * 60 + 10;
-  const y = midY + (Math.random() - 0.5) * spread;
+  // Particles float in the centre third of screen
+  const y = h * 0.35 + Math.random() * h * 0.30;
   iParticles.push(new IParticle(x, y));
 }
 
@@ -206,37 +201,36 @@ function drawWave(wave, coherence) {
   cx.restore();
 }
 
-// Draw the interference zone — glowing band between waves
+// Draw interference zone — soft radial glow at screen centre, grows with coherence
 function drawInterferenceZone(coherence) {
   if (coherence < 0.05) return;
   const w = innerWidth;
   const h = innerHeight;
-  const rY = wRose.y * h;
-  const vY = wViolet.y * h;
-  const midY = (rY + vY) / 2;
-  const spread = Math.abs(rY - vY) * 0.5 + 20;
+  const cx2 = w * 0.5;
+  const cy2 = h * 0.5;
+  const r = Math.min(w, h) * (0.3 + coherence * 0.4);
 
   cx.save();
-  const g = cx.createLinearGradient(0, midY - spread * 2, 0, midY + spread * 2);
-  const a = (coherence * 0.12).toFixed(3);
-  g.addColorStop(0,   'rgba(200,160,200,0)');
-  g.addColorStop(0.3, `rgba(200,155,190,${a})`);
-  g.addColorStop(0.5, `rgba(220,170,200,${(coherence * 0.18).toFixed(3)})`);
-  g.addColorStop(0.7, `rgba(200,155,190,${a})`);
-  g.addColorStop(1,   'rgba(200,160,200,0)');
+  const g = cx.createRadialGradient(cx2, cy2, 0, cx2, cy2, r);
+  const a1 = (coherence * 0.10).toFixed(3);
+  const a2 = (coherence * 0.06).toFixed(3);
+  g.addColorStop(0,   `rgba(210,170,220,${a1})`);
+  g.addColorStop(0.5, `rgba(185,145,200,${a2})`);
+  g.addColorStop(1,   'rgba(152,128,184,0)');
   cx.fillStyle = g;
-  cx.fillRect(0, midY - spread * 2, w, spread * 4);
+  cx.fillRect(0, 0, w, h);
 
-  // Luminous thread at exact midpoint when coherence high
-  if (coherence > 0.5) {
-    cx.globalAlpha = (coherence - 0.5) * 0.7;
-    cx.strokeStyle = `rgba(230,200,240,${((coherence - 0.5) * 0.8).toFixed(2)})`;
+  // Luminous thread across centre when high coherence
+  if (coherence > 0.65) {
+    const threadA = ((coherence - 0.65) * 0.5).toFixed(3);
+    cx.globalAlpha = parseFloat(threadA);
+    cx.strokeStyle = `rgba(230,205,245,${threadA})`;
     cx.lineWidth = 0.5;
-    cx.shadowColor = 'rgba(200,160,230,0.9)';
-    cx.shadowBlur = 12;
+    cx.shadowColor = 'rgba(210,180,240,0.8)';
+    cx.shadowBlur = 16;
     cx.beginPath();
-    cx.moveTo(0, midY);
-    cx.lineTo(w, midY);
+    cx.moveTo(0, cy2);
+    cx.lineTo(w, cy2);
     cx.stroke();
   }
   cx.restore();
@@ -270,56 +264,50 @@ function updateWaves() {
   }
 }
 
-// Set wave state per phase
+// Set wave state per phase — waves stay at edges, coherence controls centre interference glow
 function setWaveState(state) {
   waveState = state;
   if (state === 'home') {
-    // Two waves moving independently — 3D state
-    wRose.targetY   = 0.54; wViolet.targetY = 0.46;
-    wRose.targetAmp = 0.10; wViolet.targetAmp = 0.09;
+    wRose.targetY   = 0.10; wViolet.targetY = 0.90;
+    wRose.targetAmp = 0.042; wViolet.targetAmp = 0.038;
     wRose.targetAlpha = 0.45; wViolet.targetAlpha = 0.38;
     wRose.phaseV    = 0.0022; wViolet.phaseV = 0.0026;
     waveCoherenceTgt = 0;
 
   } else if (state === 'notice') {
-    // Slightly more present, starting to slow
-    wRose.targetY   = 0.55; wViolet.targetY = 0.45;
-    wRose.targetAmp = 0.12; wViolet.targetAmp = 0.10;
+    wRose.targetY   = 0.10; wViolet.targetY = 0.90;
+    wRose.targetAmp = 0.050; wViolet.targetAmp = 0.044;
     wRose.targetAlpha = 0.55; wViolet.targetAlpha = 0.48;
     wRose.phaseV    = 0.0018; wViolet.phaseV = 0.0020;
-    waveCoherenceTgt = 0.15;
+    waveCoherenceTgt = 0.20;
 
   } else if (state === 'hold') {
-    // Waves slow, moving toward each other
-    wRose.targetY   = 0.54; wViolet.targetY = 0.46;
-    wRose.targetAmp = 0.10; wViolet.targetAmp = 0.09;
-    wRose.targetAlpha = 0.60; wViolet.targetAlpha = 0.55;
+    wRose.targetY   = 0.10; wViolet.targetY = 0.90;
+    wRose.targetAmp = 0.044; wViolet.targetAmp = 0.040;
+    wRose.targetAlpha = 0.62; wViolet.targetAlpha = 0.55;
     wRose.phaseV    = 0.0012; wViolet.phaseV = 0.0014;
-    waveCoherenceTgt = 0.35;
+    waveCoherenceTgt = 0.42;
 
   } else if (state === 'anchor') {
-    // Interference pattern emerging — waves converge
-    wRose.targetY   = 0.52; wViolet.targetY = 0.48;
-    wRose.targetAmp = 0.08; wViolet.targetAmp = 0.08;
-    wRose.targetAlpha = 0.70; wViolet.targetAlpha = 0.65;
+    wRose.targetY   = 0.10; wViolet.targetY = 0.90;
+    wRose.targetAmp = 0.038; wViolet.targetAmp = 0.038;
+    wRose.targetAlpha = 0.72; wViolet.targetAlpha = 0.68;
     wRose.phaseV    = 0.0009; wViolet.phaseV = 0.0010;
-    waveCoherenceTgt = 0.65;
+    waveCoherenceTgt = 0.70;
 
   } else if (state === 'breath') {
-    // Standing wave — maximum coherence
-    wRose.targetY   = 0.50; wViolet.targetY = 0.50;
-    wRose.targetAmp = 0.06; wViolet.targetAmp = 0.06;
-    wRose.targetAlpha = 0.75; wViolet.targetAlpha = 0.72;
+    wRose.targetY   = 0.10; wViolet.targetY = 0.90;
+    wRose.targetAmp = 0.032; wViolet.targetAmp = 0.032;
+    wRose.targetAlpha = 0.78; wViolet.targetAlpha = 0.75;
     wRose.phaseV    = 0.0006; wViolet.phaseV = 0.0006;
     waveCoherenceTgt = 1.0;
 
   } else if (state === 'integrate') {
-    // Settled — slow coherent pulse
-    wRose.targetY   = 0.52; wViolet.targetY = 0.48;
-    wRose.targetAmp = 0.07; wViolet.targetAmp = 0.07;
+    wRose.targetY   = 0.10; wViolet.targetY = 0.90;
+    wRose.targetAmp = 0.036; wViolet.targetAmp = 0.036;
     wRose.targetAlpha = 0.55; wViolet.targetAlpha = 0.50;
     wRose.phaseV    = 0.0008; wViolet.phaseV = 0.0008;
-    waveCoherenceTgt = 0.75;
+    waveCoherenceTgt = 0.80;
   }
 }
 
