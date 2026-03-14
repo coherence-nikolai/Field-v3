@@ -1060,7 +1060,7 @@ body.fs-large .enter-question { font-size: clamp(26px,7vw,40px); }
 <div class="screen active" id="s-home">
   <div class="field-wordmark">Field</div>
 
-  <button class="home-enter-btn" id="homeEnterBtn" onclick="startNotice()">
+  <button class="home-enter-btn" id="homeEnterBtn" onclick="startNotice()" ontouchend="this._t=1" onmousedown="this._t=1">
     <span class="home-enter-question" id="homeArrival">What are you holding right now?</span>
   </button>
 
@@ -1202,6 +1202,16 @@ body.fs-large .enter-question { font-size: clamp(26px,7vw,40px); }
 </div>
 
 <script src="data.js"></script>
+<script>
+// Catch any errors before app.js runs
+window.onerror = function(msg, src, line, col, err) {
+  const d = document.createElement('div');
+  d.style.cssText = 'position:fixed;top:0;left:0;right:0;background:red;color:white;padding:20px;z-index:9999;font-size:16px;word-break:break-all;';
+  d.textContent = 'ERROR: ' + msg + ' | Line: ' + line + ' | ' + (src||'').split('/').pop();
+  document.body.appendChild(d);
+  return false;
+};
+</script>
 <script src="app.js"></script>
 </body>
 </html>

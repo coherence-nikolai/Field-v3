@@ -586,15 +586,19 @@ loop();
 
 // ── AUDIO ──
 function initAudio() {
-  if (audioCtx && audioCtx.state !== 'closed') return;
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  try {
+    if (audioCtx && audioCtx.state !== 'closed') return;
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  } catch(e) { console.warn('initAudio failed:', e.message); }
 }
 function resumeAudio() {
-  if (!audioCtx || audioCtx.state === 'closed') {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    return;
-  }
-  if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+  try {
+    if (!audioCtx || audioCtx.state === 'closed') {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      return;
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+  } catch(e) { console.warn('resumeAudio failed:', e.message); }
 }
 document.addEventListener('touchstart', resumeAudio, {passive:true, capture:true});
 document.addEventListener('click',      resumeAudio, {passive:true, capture:true});
@@ -1026,7 +1030,15 @@ function confirmEntry(fromPhase) {
 }
 
 // Direct phase entry from home — each can start solo or as part of the river
-function startNotice()    { lsSet('f2_cnt_notice',    parseInt(lsGet('f2_cnt_notice')    ||'0')+1); startEnter('notice');    }
+function startNotice() {
+  try {
+    lsSet('f2_cnt_notice', parseInt(lsGet('f2_cnt_notice')||'0')+1);
+    startEnter('notice');
+  } catch(e) {
+    console.error('startNotice error:', e);
+    alert('Error: ' + e.message + ' at ' + e.stack);
+  }
+}
 function startHold()      { lsSet('f2_cnt_hold',      parseInt(lsGet('f2_cnt_hold')      ||'0')+1); startEnter('hold');      }
 function startAnchor()    { lsSet('f2_cnt_anchor',    parseInt(lsGet('f2_cnt_anchor')    ||'0')+1); startEnter('anchor');    }
 function startIntegrate() { lsSet('f2_cnt_integrate', parseInt(lsGet('f2_cnt_integrate') ||'0')+1); startEnter('integrate'); }
