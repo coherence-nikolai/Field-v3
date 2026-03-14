@@ -61,19 +61,19 @@ rsz();
 // Violet wave: reserved strip just above nav
 // Content zone always clear between them
 
+// Fixed vertical positions — must be declared first
+const WAVE_TOP_FRAC = 0.13;
+const WAVE_BOT_FRAC = 0.87;
+
 let waveState = 'home';
 let waveCoherence = 0;
 let waveCoherenceTgt = 0;
 let waveTime = 0;
-let waveBreathAmp = 0; // kept but minimal — position-based movement now primary
-let waveRoseY    = WAVE_TOP_FRAC;  // current render Y for rose wave
-let waveVioletY  = WAVE_BOT_FRAC; // current render Y for violet wave
+let waveBreathAmp = 0;
+let waveRoseY       = WAVE_TOP_FRAC;
+let waveVioletY     = WAVE_BOT_FRAC;
 let waveRoseYTgt    = WAVE_TOP_FRAC;
 let waveVioletYTgt  = WAVE_BOT_FRAC;
-
-// Fixed vertical positions — clear of all content
-const WAVE_TOP_FRAC = 0.13;  // just below chrome
-const WAVE_BOT_FRAC = 0.87;  // just above nav
 
 const wRose = {
   freq: 0.0016, amp: 0.058, targetAmp: 0.058,
