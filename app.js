@@ -38,9 +38,11 @@ let bgDimTgt = 1; // kept for legacy calls, not actively used
 
 // ── CANVAS ──
 const cv = document.getElementById('cv');
-const cx = cv.getContext('2d');
+if (!cv) { console.error('FIELD: canvas #cv not found'); }
+const cx = cv ? cv.getContext('2d') : null;
 
 function rsz() {
+  if (!cv || !cx) return;
   const dpr = window.devicePixelRatio || 1;
   cv.width  = innerWidth  * dpr;
   cv.height = innerHeight * dpr;
@@ -533,6 +535,7 @@ let breathOrb = null;
 
 // ── RENDER LOOP ──
 function loop() {
+  if (!cx) { requestAnimationFrame(loop); return; }
   cx.clearRect(0, 0, cv.width, cv.height);
 
   // Grain texture
