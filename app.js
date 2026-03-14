@@ -1651,3 +1651,9 @@ setWaveState('home');
 tryDrone();
 document.querySelectorAll('.al').forEach(a => a.classList.add('on'));
 updateHomeCount();
+// Re-run applyLang after fonts load to ensure text is visible
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(() => applyLang());
+} else {
+  setTimeout(applyLang, 800);
+}
