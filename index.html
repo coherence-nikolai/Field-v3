@@ -313,20 +313,19 @@ b, strong { font-weight: 400; }
 
 /* Revisit glyph on home screen */
 .intro-glyph {
-  position: absolute;
-  top: calc(var(--wave-top) + 8px);
-  right: 60px;
-  font-size: 18px;
-  color: rgba(200,130,110,.25);
+  font-family: var(--sans);
+  font-size: clamp(11px,2.8vw,13px);
+  letter-spacing: .14em;
+  color: rgba(200,130,110,.38);
   background: none; border: none;
   cursor: pointer;
-  padding: 8px;
+  padding: 10px 16px;
   -webkit-tap-highlight-color: transparent;
   transition: color .4s ease;
-  font-family: var(--sans);
-  z-index: 20;
+  text-transform: lowercase;
+  margin-top: -8px;
 }
-.intro-glyph:hover { color: rgba(200,130,110,.55); }
+.intro-glyph:hover { color: rgba(200,130,110,.65); }
 
 /* ── HOME SCREEN ── */
 #s-home {
@@ -1115,15 +1114,15 @@ body.fs-large .enter-question { font-size: clamp(26px,7vw,40px); }
 </div>
 
 <!-- INTRO ANIMATION SCREEN -->
-<div class="screen" id="s-intro">
+<div class="screen active" id="s-intro">
   <canvas class="intro-canvas" id="introCanvas"></canvas>
   <div class="intro-skip" id="introSkip">tap to enter</div>
 </div>
 
 <!-- HOME -->
-<div class="screen active" id="s-home">
+<div class="screen" id="s-home">
   <div class="field-wordmark">Resonance</div>
-  <button class="intro-glyph" id="introGlyph" onclick="playIntroAnimation()" title="what is this?">∿</button>
+  <button class="intro-glyph" id="introGlyph" onclick="playIntroAnimation()">what is this?</button>
 
   <button class="home-enter-btn" id="homeEnterBtn" onclick="startNotice()" ontouchend="this._t=1" onmousedown="this._t=1">
     <span class="home-enter-question" id="homeArrival">What are you holding right now?</span>

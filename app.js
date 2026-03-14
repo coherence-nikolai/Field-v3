@@ -65,7 +65,11 @@ let waveState = 'home';
 let waveCoherence = 0;
 let waveCoherenceTgt = 0;
 let waveTime = 0;
-let waveBreathAmp = 0;
+let waveBreathAmp = 0; // kept but minimal — position-based movement now primary
+let waveRoseY    = WAVE_TOP_FRAC;  // current render Y for rose wave
+let waveVioletY  = WAVE_BOT_FRAC; // current render Y for violet wave
+let waveRoseYTgt    = WAVE_TOP_FRAC;
+let waveVioletYTgt  = WAVE_BOT_FRAC;
 
 // Fixed vertical positions — clear of all content
 const WAVE_TOP_FRAC = 0.13;  // just below chrome
@@ -200,6 +204,8 @@ function updateWaves() {
   waveTime++;
   waveCoherence += (waveCoherenceTgt - waveCoherence) * 0.010;
   waveBreathAmp += (0 - waveBreathAmp) * 0.045;
+  waveRoseY   += (waveRoseYTgt   - waveRoseY)   * 0.022;
+  waveVioletY += (waveVioletYTgt - waveVioletY)  * 0.022;
   const slow = 1 - waveCoherence * 0.72;
   wRose.phase   += wRose.phaseV   * slow;
   wViolet.phase += wViolet.phaseV * slow;
@@ -249,8 +255,27 @@ function setWaveState(state) {
   }
 }
 
-function pulseWavesFromBreath(intensity) {
-  waveBreathAmp = Math.max(waveBreathAmp, intensity * 0.048);
+// Move waves positionally — smooth, no spikes
+function setWaveBreathPosition(phase, cycle) {
+  if (phase === 'inhale') {
+    // Waves move inward toward orb — gentle draw
+    const depth = 0.12 + cycle * 0.04;
+    waveRoseYTgt   = WAVE_TOP_FRAC + depth;
+    waveVioletYTgt = WAVE_BOT_FRAC - depth;
+  } else if (phase === 'hold') {
+    // Hold position — flanking the orb
+    const depth = 0.15 + cycle * 0.04;
+    waveRoseYTgt   = WAVE_TOP_FRAC + depth;
+    waveVioletYTgt = WAVE_BOT_FRAC - depth;
+  } else if (phase === 'exhale') {
+    // Waves release outward
+    waveRoseYTgt   = WAVE_TOP_FRAC + 0.04;
+    waveVioletYTgt = WAVE_BOT_FRAC - 0.04;
+  } else {
+    // Return to home positions
+    waveRoseYTgt   = WAVE_TOP_FRAC;
+    waveVioletYTgt = WAVE_BOT_FRAC;
+  }
 }
 
 // Background grain — organic texture
@@ -493,8 +518,8 @@ function loop() {
   updateWaves();
   const renderCoherence = getFlashCoherence();
   drawInterferenceZone(renderCoherence);
-  drawWave(wRose,   WAVE_TOP_FRAC, waveBreathAmp);
-  drawWave(wViolet, WAVE_BOT_FRAC, waveBreathAmp);
+  drawWave(wRose,   waveRoseY,   waveBreathAmp);
+  drawWave(wViolet, waveVioletY, waveBreathAmp);
   iParticles.forEach(p => p.draw());
 
   if (breathOrb) { breathOrb.update(); breathOrb.draw(); drawBreathRing(); }
@@ -578,26 +603,33 @@ function tryDrone() {
   if (audioCtx.state === 'suspended') { audioCtx.resume().then(startDrone); return; }
   startDrone();
 }
+
 function startDrone() {
   if (droneNodes.length) return;
-  // Root drone: 396Hz (liberation/fear release) + deep sub + violet harmonic
-  [[396,0.016],[198,0.010],[99,0.007],[594,0.005]].forEach(([f,g]) => {
+  // Two-tone drone: rose wave = warm 396Hz, violet wave = cool 528Hz
+  // Two distinct frequencies representing the two polarities
+  const roseFreqs   = [[396,0.014],[198,0.008],[99,0.005]];   // warm, low, grounding
+  const violetFreqs = [[528,0.011],[264,0.007],[792,0.004]];   // cool, high, expansive
+  [...roseFreqs, ...violetFreqs].forEach(([f,g]) => {
     const o = audioCtx.createOscillator();
     const gn = audioCtx.createGain();
+    const lp = audioCtx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 900;
     o.type = 'sine'; o.frequency.value = f;
     gn.gain.setValueAtTime(0, audioCtx.currentTime);
-    gn.gain.linearRampToValueAtTime(g, audioCtx.currentTime + 5);
-    o.connect(gn); gn.connect(audioCtx.destination); o.start();
+    gn.gain.linearRampToValueAtTime(g, audioCtx.currentTime + 6);
+    o.connect(lp); lp.connect(gn); gn.connect(audioCtx.destination); o.start();
     droneNodes.push({o, gn});
   });
 }
+
 function fadeDrone(out = true, dur = 2) {
   if (!audioCtx || !droneNodes.length) return;
   droneNodes.forEach(({gn}) => {
     const now = audioCtx.currentTime;
     gn.gain.cancelScheduledValues(now);
     gn.gain.setValueAtTime(gn.gain.value, now);
-    gn.gain.linearRampToValueAtTime(out ? 0 : 0.016, now + dur);
+    gn.gain.linearRampToValueAtTime(out ? 0 : 0.014, now + dur);
   });
   if (out) setTimeout(() => {
     droneNodes.forEach(({o}) => { try { o.stop(); } catch(e) {} });
@@ -605,25 +637,32 @@ function fadeDrone(out = true, dur = 2) {
   }, (dur + 0.2) * 1000);
 }
 
+// Play convergence chord at integrate — both tones align to 432Hz
+function playConvergenceChord() {
+  if (!audioEnabled || !audioCtx) return;
+  try {
+    [[432,0.022],[864,0.012],[216,0.010],[648,0.008]].forEach(([f,g],i) => {
+      const o = audioCtx.createOscillator();
+      const gn = audioCtx.createGain();
+      const lp = audioCtx.createBiquadFilter();
+      lp.type = 'lowpass'; lp.frequency.value = 1200;
+      o.type = 'sine'; o.frequency.value = f;
+      const t0 = audioCtx.currentTime + i * 0.12;
+      gn.gain.setValueAtTime(0, t0);
+      gn.gain.linearRampToValueAtTime(g, t0 + 1.2);
+      gn.gain.setValueAtTime(g, t0 + 3);
+      gn.gain.exponentialRampToValueAtTime(0.0001, t0 + 9);
+      o.connect(lp); lp.connect(gn); gn.connect(audioCtx.destination);
+      o.start(t0); o.stop(t0 + 10);
+    });
+  } catch(e) {}
+}
+
 // ── LANDING AMBIENT ──
 let landingPlayed = false;
 function playLandingAmbient() {
-  if (landingPlayed || !audioEnabled || !audioCtx) return;
-  landingPlayed = true;
-  [[396,0.011],[198,0.007],[594,0.004]].forEach(([f,g],i) => {
-    const o = audioCtx.createOscillator();
-    const gn = audioCtx.createGain();
-    const lp = audioCtx.createBiquadFilter();
-    lp.type = 'lowpass'; lp.frequency.value = 700;
-    o.type = 'sine'; o.frequency.value = f;
-    const t0 = audioCtx.currentTime + i * 0.4;
-    gn.gain.setValueAtTime(0, t0);
-    gn.gain.linearRampToValueAtTime(g, t0 + 3.5);
-    gn.gain.setValueAtTime(g, t0 + 6);
-    gn.gain.exponentialRampToValueAtTime(0.0001, t0 + 14);
-    o.connect(lp); lp.connect(gn); gn.connect(audioCtx.destination);
-    o.start(t0); o.stop(t0 + 15);
-  });
+  // Now handled by two-tone drone starting immediately
+  tryDrone();
 }
 
 // ── PHASE SWELLS — harmonic pads, not chimes ──
@@ -874,6 +913,8 @@ function goHome() {
   clearBreathTimers();
   hideBackBtn();
   setWaveState('home');
+  waveRoseYTgt   = WAVE_TOP_FRAC;
+  waveVioletYTgt = WAVE_BOT_FRAC;
   document.querySelectorAll('.al').forEach(a => a.classList.remove('on'));
   ['dec-breathe-cta'].forEach(id => { const el = document.getElementById(id); if (el) el.remove(); });
 
@@ -1370,11 +1411,11 @@ function startBreath() {
       bDelay(() => showBtext(cues.inhale), 300);
       hideBtext(breathOrb.INHALE - 700);
       playBreathInhale();
-      pulseWavesFromBreath(0.6 + cycle * 0.15); // waves expand with inhale
+      setWaveBreathPosition('inhale', cycle);
     } else if (phase === 'hold') {
       if (breathOrb) breathOrb.wordTargetAlpha = 0.5;
       bDelay(() => showBtext(cues.hold), 100);
-      pulseWavesFromBreath(0.4);
+      setWaveBreathPosition('hold', cycle);
     } else if (phase === 'exhale') {
       if (breathOrb) {
         breathOrb.wordTargetAlpha    = [0.35, 0.55, 1.0][Math.min(cycle, 2)];
@@ -1383,12 +1424,14 @@ function startBreath() {
       showBtext(cues.exhale);
       hideBtext(breathOrb.EXHALE - 700);
       playBreathExhale();
-      pulseWavesFromBreath(0.3); // gentler on exhale
+      setWaveBreathPosition('exhale', cycle);
     } else if (phase === 'rest') {
+      setWaveBreathPosition('rest', cycle);
       const dot = document.getElementById('bdot' + (cycle - 1));
       if (dot) dot.classList.add('done');
     } else if (phase === 'crystallised') {
       if (breathOrb) { breathOrb.wordTargetAlpha = 1; breathOrb.wordGlowIntensity = 1; }
+      setWaveBreathPosition('rest', cycle);
       const dot = document.getElementById('bdot2');
       if (dot) dot.classList.add('done');
     }
@@ -1396,6 +1439,8 @@ function startBreath() {
 
   breathOrb.onCyclesDone = () => {
     breathRunning = false;
+    waveRoseYTgt   = WAVE_TOP_FRAC;  // waves return home
+    waveVioletYTgt = WAVE_BOT_FRAC;
     if (btext) btext.style.opacity = '0';
     bDelay(() => {
       if (!breathOrb) return;
@@ -1791,7 +1836,49 @@ function playIntroAnimation() {
   screen.addEventListener('click', onSkip, {once: true});
   screen.addEventListener('touchend', onSkip, {once: true, passive: true});
 
-  showScreen('s-intro', () => { introAnimFrame = requestAnimationFrame(introLoop); });
+  // Two-tone intro audio — rose enters first, violet follows, they converge
+  playIntroAudio();
+
+  // s-intro is already active on first load — just start the loop
+  introAnimFrame = requestAnimationFrame(introLoop);
+}
+
+function playIntroAudio() {
+  if (!audioEnabled || !audioCtx) return;
+  try {
+    // Rose tone — warm, enters at start
+    [[396,0.013],[198,0.008]].forEach(([f,g],i) => {
+      const o = audioCtx.createOscillator(), gn = audioCtx.createGain();
+      const lp = audioCtx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=800;
+      o.type='sine'; o.frequency.value=f;
+      const t0 = audioCtx.currentTime + 0.3;
+      gn.gain.setValueAtTime(0,t0); gn.gain.linearRampToValueAtTime(g,t0+3);
+      gn.gain.setValueAtTime(g,t0+16); gn.gain.exponentialRampToValueAtTime(0.0001,t0+24);
+      o.connect(lp); lp.connect(gn); gn.connect(audioCtx.destination);
+      o.start(t0); o.stop(t0+25);
+    });
+    // Violet tone — cool, enters after rose
+    [[528,0.010],[264,0.006]].forEach(([f,g],i) => {
+      const o = audioCtx.createOscillator(), gn = audioCtx.createGain();
+      const lp = audioCtx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=1000;
+      o.type='sine'; o.frequency.value=f;
+      const t0 = audioCtx.currentTime + 3.5; // enters later
+      gn.gain.setValueAtTime(0,t0); gn.gain.linearRampToValueAtTime(g,t0+3);
+      gn.gain.setValueAtTime(g,t0+12); gn.gain.exponentialRampToValueAtTime(0.0001,t0+22);
+      o.connect(lp); lp.connect(gn); gn.connect(audioCtx.destination);
+      o.start(t0); o.stop(t0+23);
+    });
+    // Convergence chord — enters near end of animation
+    [[432,0.018],[864,0.009]].forEach(([f,g]) => {
+      const o = audioCtx.createOscillator(), gn = audioCtx.createGain();
+      o.type='sine'; o.frequency.value=f;
+      const t0 = audioCtx.currentTime + 17;
+      gn.gain.setValueAtTime(0,t0); gn.gain.linearRampToValueAtTime(g,t0+2.5);
+      gn.gain.exponentialRampToValueAtTime(0.0001,t0+8);
+      o.connect(gn); gn.connect(audioCtx.destination);
+      o.start(t0); o.stop(t0+9);
+    });
+  } catch(e) {}
 }
 
 function endIntroAnimation() {
@@ -1800,10 +1887,10 @@ function endIntroAnimation() {
   introPlayed = true;
   const skip = document.getElementById('introSkip');
   if (skip) skip.classList.remove('visible');
+  // Stop any intro audio nodes that might still be playing
   showScreen('s-home', () => {
     document.querySelectorAll('.al').forEach(a => a.classList.add('on'));
     setTimeout(tryDrone, 300);
-    setTimeout(playLandingAmbient, 600);
   });
   applyLang();
   applyDawnPalette();
@@ -1814,6 +1901,7 @@ let convergenceActive = false;
 
 function triggerWaveConvergence() {
   convergenceActive = true;
+  playConvergenceChord(); // both tones align
   let frame = 0;
   const FRAMES = 360; // ~6s
   const origRoseY   = WAVE_TOP_FRAC;
@@ -1867,7 +1955,6 @@ if (fontLarge) document.body.classList.add('fs-large');
 applyDawnPalette();
 applyLang();
 setWaveState('home');
-document.querySelectorAll('.al').forEach(a => a.classList.add('on'));
 updateHomeCount();
 if (document.fonts && document.fonts.ready) {
   document.fonts.ready.then(() => applyLang());
@@ -1875,15 +1962,37 @@ if (document.fonts && document.fonts.ready) {
   setTimeout(applyLang, 800);
 }
 
-// First launch: play intro. Otherwise go straight to home
+// First launch: play intro animation (s-intro already active)
+// Returning: skip to home directly
 if (!introPlayed) {
-  // Short delay so home screen loads first, then intro plays
-  setTimeout(() => {
-    tryDrone();
+  // Init audio on first interaction, then play intro
+  const startIntro = () => {
+    document.removeEventListener('touchstart', startIntro);
+    document.removeEventListener('click', startIntro);
+    initAudio();
+    resumeAudio();
     playIntroAnimation();
-  }, 400);
+  };
+  document.addEventListener('touchstart', startIntro, {once: true, passive: true});
+  document.addEventListener('click', startIntro, {once: true});
+  // Show skip hint immediately so user knows they can tap
+  setTimeout(() => {
+    const skip = document.getElementById('introSkip');
+    if (skip) skip.classList.add('visible');
+  }, 500);
 } else {
-  tryDrone();
+  // Skip intro — go straight to home
+  const home = document.getElementById('s-home');
+  const intro = document.getElementById('s-intro');
+  if (intro) { intro.classList.remove('active'); }
+  if (home)  { home.classList.add('active'); }
   document.querySelectorAll('.al').forEach(a => a.classList.add('on'));
-  setTimeout(playLandingAmbient, 800);
+  // Drone starts on first tap (iOS requires gesture)
+  const startAudio = () => {
+    document.removeEventListener('touchstart', startAudio);
+    document.removeEventListener('click', startAudio);
+    initAudio(); tryDrone();
+  };
+  document.addEventListener('touchstart', startAudio, {once: true, passive: true});
+  document.addEventListener('click', startAudio, {once: true});
 }
