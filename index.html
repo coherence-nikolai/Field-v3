@@ -495,6 +495,24 @@ b, strong { font-weight: 400; }
 }
 .something-else-btn:hover { color: rgba(237,224,212,.55); }
 
+.enter-whisper {
+  position: fixed;
+  bottom: 90px;
+  left: 50%; transform: translateX(-50%);
+  font-family: var(--serif);
+  font-size: clamp(16px,4vw,20px);
+  font-style: italic;
+  color: var(--thread);
+  text-align: center;
+  width: 88vw;
+  opacity: 0;
+  transition: opacity 1.8s ease;
+  pointer-events: none;
+  z-index: 45;
+  line-height: 1.6;
+}
+.enter-whisper.visible { opacity: 1; }
+
 /* Freq screen */
 #s-freq {
   justify-content: center;
@@ -808,16 +826,19 @@ b, strong { font-weight: 400; }
   position: fixed;
   top: calc(50% - clamp(110px,24vw,150px));
   left: 50%; transform: translateX(-50%);
+  width: 88vw;
   font-family: var(--sans);
-  font-size: clamp(18px,4.5vw,22px);
-  letter-spacing: .22em;
+  font-size: clamp(16px,4vw,20px);
+  letter-spacing: .18em;
   color: var(--cream-dim);
   text-align: center;
   text-transform: lowercase;
   opacity: 0;
   transition: opacity .6s ease;
   z-index: 22; pointer-events: none;
-  white-space: nowrap;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.6;
 }
 
 .breath-dots {
@@ -1059,6 +1080,7 @@ body.fs-large .enter-question { font-size: clamp(26px,7vw,40px); }
   </div>
 
   <button class="enter-continue" id="enterContinue" onclick="confirmEntry()"></button>
+  <div class="enter-whisper" id="enterWhisper"></div>
 </div>
 
 <!-- NOTICE PHASE -->

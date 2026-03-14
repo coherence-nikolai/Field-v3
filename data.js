@@ -21,7 +21,7 @@ const TRANSLATIONS = {
     integrateHint: 'land in the wider place',
 
     // Phase prompts
-    noticePrompt:   'What is present right now?\nName it honestly. No story needed.',
+    noticePrompt:   'Just notice.\nNothing to fix.\nLet it be here.',
     holdPrompt:     'Stay with it.\nFeel where it lives in your body.\nDon\'t try to change it.',
     anchorPrompt:   'What is also true?\nNot the opposite — the complement.\nSomething your lived experience confirms.',
     integratePrompt:'Hold both.\nBreathe.\nWhat becomes available from this wider place?',
@@ -64,7 +64,7 @@ const TRANSLATIONS = {
     anchorHint:    'encontrar la otra verdad',
     integrateHint: 'aterrizar en el lugar más amplio',
 
-    noticePrompt:   '¿Qué está presente ahora mismo?\nNómbralo honestamente. Sin historia.',
+    noticePrompt:   'Solo nota.\nNada que arreglar.\nDéjalo estar aquí.',
     holdPrompt:     'Quédate con ello.\nSiente dónde vive en tu cuerpo.\nNo intentes cambiarlo.',
     anchorPrompt:   '¿Qué también es verdad?\nNo lo opuesto — el complemento.\nAlgo que tu experiencia vivida confirma.',
     integratePrompt:'Sostén ambos.\nRespira.\n¿Qué está disponible desde este lugar más amplio?',

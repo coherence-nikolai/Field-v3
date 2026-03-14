@@ -62,34 +62,34 @@ let waveCoherence = 0;  // 0–1: how ordered the interference pattern is
 let waveCoherenceTgt = 0;
 let waveTime = 0;
 
-// Rose wave — top edge
+// Rose wave — upper zone (25%)
 const wRose = {
   freq: 0.0018,
-  amp: 0.04,
-  targetAmp: 0.04,
+  amp: 0.032,
+  targetAmp: 0.032,
   phase: 0,
   phaseV: 0.0018,
-  y: 0.10,        // top edge
-  targetY: 0.10,
+  y: 0.25,
+  targetY: 0.25,
   color: '200,130,110',
-  alpha: 0.55,
-  targetAlpha: 0.55,
-  thickness: 2.2,
+  alpha: 0.40,
+  targetAlpha: 0.40,
+  thickness: 1.8,
 };
 
-// Violet wave — bottom edge
+// Violet wave — lower zone (75%)
 const wViolet = {
   freq: 0.0024,
-  amp: 0.04,
-  targetAmp: 0.04,
+  amp: 0.030,
+  targetAmp: 0.030,
   phase: Math.PI * 0.7,
   phaseV: 0.0022,
-  y: 0.90,        // bottom edge
-  targetY: 0.90,
+  y: 0.75,
+  targetY: 0.75,
   color: '152,128,184',
-  alpha: 0.45,
-  targetAlpha: 0.45,
-  thickness: 1.8,
+  alpha: 0.35,
+  targetAlpha: 0.35,
+  thickness: 1.5,
 };
 
 // Interference zone particles — appear at wave intersection
@@ -265,49 +265,48 @@ function updateWaves() {
   }
 }
 
-// Set wave state per phase — waves stay at edges, coherence controls centre interference glow
 function setWaveState(state) {
   waveState = state;
   if (state === 'home') {
-    wRose.targetY   = 0.10; wViolet.targetY = 0.90;
-    wRose.targetAmp = 0.042; wViolet.targetAmp = 0.038;
-    wRose.targetAlpha = 0.45; wViolet.targetAlpha = 0.38;
+    wRose.targetY   = 0.25; wViolet.targetY = 0.75;
+    wRose.targetAmp = 0.032; wViolet.targetAmp = 0.028;
+    wRose.targetAlpha = 0.38; wViolet.targetAlpha = 0.32;
     wRose.phaseV    = 0.0022; wViolet.phaseV = 0.0026;
-    waveCoherenceTgt = 0;
+    waveCoherenceTgt = 0.05;
 
   } else if (state === 'notice') {
-    wRose.targetY   = 0.10; wViolet.targetY = 0.90;
-    wRose.targetAmp = 0.050; wViolet.targetAmp = 0.044;
-    wRose.targetAlpha = 0.55; wViolet.targetAlpha = 0.48;
-    wRose.phaseV    = 0.0018; wViolet.phaseV = 0.0020;
+    wRose.targetY   = 0.25; wViolet.targetY = 0.75;
+    wRose.targetAmp = 0.038; wViolet.targetAmp = 0.032;
+    wRose.targetAlpha = 0.48; wViolet.targetAlpha = 0.40;
+    wRose.phaseV    = 0.0016; wViolet.phaseV = 0.0018;
     waveCoherenceTgt = 0.20;
 
   } else if (state === 'hold') {
-    wRose.targetY   = 0.10; wViolet.targetY = 0.90;
-    wRose.targetAmp = 0.044; wViolet.targetAmp = 0.040;
-    wRose.targetAlpha = 0.62; wViolet.targetAlpha = 0.55;
-    wRose.phaseV    = 0.0012; wViolet.phaseV = 0.0014;
+    wRose.targetY   = 0.25; wViolet.targetY = 0.75;
+    wRose.targetAmp = 0.032; wViolet.targetAmp = 0.028;
+    wRose.targetAlpha = 0.55; wViolet.targetAlpha = 0.48;
+    wRose.phaseV    = 0.0010; wViolet.phaseV = 0.0012;
     waveCoherenceTgt = 0.42;
 
   } else if (state === 'anchor') {
-    wRose.targetY   = 0.10; wViolet.targetY = 0.90;
-    wRose.targetAmp = 0.038; wViolet.targetAmp = 0.038;
-    wRose.targetAlpha = 0.72; wViolet.targetAlpha = 0.68;
-    wRose.phaseV    = 0.0009; wViolet.phaseV = 0.0010;
+    wRose.targetY   = 0.25; wViolet.targetY = 0.75;
+    wRose.targetAmp = 0.026; wViolet.targetAmp = 0.026;
+    wRose.targetAlpha = 0.65; wViolet.targetAlpha = 0.58;
+    wRose.phaseV    = 0.0007; wViolet.phaseV = 0.0008;
     waveCoherenceTgt = 0.70;
 
   } else if (state === 'breath') {
-    wRose.targetY   = 0.10; wViolet.targetY = 0.90;
-    wRose.targetAmp = 0.032; wViolet.targetAmp = 0.032;
-    wRose.targetAlpha = 0.78; wViolet.targetAlpha = 0.75;
-    wRose.phaseV    = 0.0006; wViolet.phaseV = 0.0006;
+    wRose.targetY   = 0.25; wViolet.targetY = 0.75;
+    wRose.targetAmp = 0.018; wViolet.targetAmp = 0.018;
+    wRose.targetAlpha = 0.72; wViolet.targetAlpha = 0.68;
+    wRose.phaseV    = 0.0005; wViolet.phaseV = 0.0005;
     waveCoherenceTgt = 1.0;
 
   } else if (state === 'integrate') {
-    wRose.targetY   = 0.10; wViolet.targetY = 0.90;
-    wRose.targetAmp = 0.036; wViolet.targetAmp = 0.036;
-    wRose.targetAlpha = 0.55; wViolet.targetAlpha = 0.50;
-    wRose.phaseV    = 0.0008; wViolet.phaseV = 0.0008;
+    wRose.targetY   = 0.25; wViolet.targetY = 0.75;
+    wRose.targetAmp = 0.022; wViolet.targetAmp = 0.022;
+    wRose.targetAlpha = 0.48; wViolet.targetAlpha = 0.42;
+    wRose.phaseV    = 0.0007; wViolet.phaseV = 0.0007;
     waveCoherenceTgt = 0.80;
   }
 }
@@ -414,7 +413,9 @@ class BreathOrb {
       }
 
     } else if (this.phase === 'rest') {
-      tR = 12; tB = 0; tG = 1.4;
+      // Gentle target — don't snap, let easing carry it
+      tR = this.dispRadius * 0.92 + 12 * 0.08; // ease toward 12 softly
+      tB = 0; tG = 1.2;
       if (t > this.REST) this.startPhase('inhale');
 
     } else if (this.phase === 'crystallised') {
@@ -431,7 +432,7 @@ class BreathOrb {
       if (t > this.MORPH_DURATION) { this.phase = 'done'; if (this.onMorphDone) this.onMorphDone(); }
     }
 
-    const ls = this.phase === 'exhale' ? 0.055 : 0.045;
+    const ls = this.phase === 'exhale' ? 0.038 : 0.028;
     this.dispRadius += ((tR||9)  - this.dispRadius) * ls;
     this.dispBlur   += ((tB||0)  - this.dispBlur)   * ls;
     this.dispGlow   += ((tG||1)  - this.dispGlow)   * ls;
@@ -547,9 +548,10 @@ function loop() {
   }
 
   updateWaves();
-  drawInterferenceZone(waveCoherence);
-  drawWave(wRose,   waveCoherence);
-  drawWave(wViolet, waveCoherence);
+  const renderCoherence = getFlashCoherence();
+  drawInterferenceZone(renderCoherence);
+  drawWave(wRose,   renderCoherence);
+  drawWave(wViolet, renderCoherence);
   iParticles.forEach(p => p.draw());
 
   if (breathOrb) { breathOrb.update(); breathOrb.draw(); drawBreathRing(); }
@@ -630,6 +632,27 @@ function fadeDrone(out = true, dur = 2) {
     droneNodes.forEach(({o}) => { try { o.stop(); } catch(e) {} });
     droneNodes = [];
   }, (dur + 0.2) * 1000);
+}
+
+// ── LANDING AMBIENT ──
+let landingPlayed = false;
+function playLandingAmbient() {
+  if (landingPlayed || !audioEnabled || !audioCtx) return;
+  landingPlayed = true;
+  [[396,0.011],[198,0.007],[594,0.004]].forEach(([f,g],i) => {
+    const o = audioCtx.createOscillator();
+    const gn = audioCtx.createGain();
+    const lp = audioCtx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 700;
+    o.type = 'sine'; o.frequency.value = f;
+    const t0 = audioCtx.currentTime + i * 0.4;
+    gn.gain.setValueAtTime(0, t0);
+    gn.gain.linearRampToValueAtTime(g, t0 + 3.5);
+    gn.gain.setValueAtTime(g, t0 + 6);
+    gn.gain.exponentialRampToValueAtTime(0.0001, t0 + 14);
+    o.connect(lp); lp.connect(gn); gn.connect(audioCtx.destination);
+    o.start(t0); o.stop(t0 + 15);
+  });
 }
 
 // ── PHASE SWELLS — harmonic pads, not chimes ──
@@ -869,6 +892,7 @@ function goHome() {
   showScreen('s-home', () => {
     document.querySelectorAll('.al').forEach(a => a.classList.add('on'));
     setTimeout(tryDrone, 300);
+    setTimeout(playLandingAmbient, 800);
   });
   applyLang();
   applyDawnPalette();
@@ -894,6 +918,10 @@ function startEnter(fromPhase) {
   const seb = document.getElementById('somethingElseBtn');
   if (seb) seb.textContent = lang === 'en' ? 'something else...' : 'algo más...';
 
+  // Clear previous whisper
+  const whisperEl2 = document.getElementById('enterWhisper');
+  if (whisperEl2) { whisperEl2.textContent = ''; whisperEl2.classList.remove('visible'); }
+
   // Populate contractions
   const grid = document.getElementById('contractionGrid');
   if (grid) {
@@ -912,6 +940,10 @@ function startEnter(fromPhase) {
         if (inp) { inp.value = name; }
         showContinue();
         if (navigator.vibrate) navigator.vibrate(10);
+        // Interference flash — field recognises what was named
+        triggerInterferenceFlash();
+        // AI whisper beneath the pill
+        fetchEnterWhisper(tok, CONTRACTIONS.en[i]);
       });
       btn.addEventListener('touchend', e => { e.preventDefault(); btn.click(); });
       grid.appendChild(btn);
@@ -1382,11 +1414,19 @@ function launchIntegrate() {
   setWaveState('integrate');
   setText('pname-integrate', t.integrateLabel.toUpperCase());
 
-  // Witnessed sentence
+  // Witnessed sentence — AI generated, falls back to static
   const witnessedEl = document.getElementById('integrateWitnessed');
   const wKey        = currentContraction;
-  const witnessed   = (WITNESSED[lang] && WITNESSED[lang][wKey]) || '';
-  if (witnessedEl) { witnessedEl.textContent = witnessed; witnessedEl.classList.remove('visible'); }
+  const staticWitnessed = (WITNESSED[lang] && WITNESSED[lang][wKey]) || '';
+  if (witnessedEl) { witnessedEl.textContent = staticWitnessed; witnessedEl.classList.remove('visible'); }
+
+  // Try AI-generated witnessed sentence in background
+  const lastThreadForWitness = lsGet('f2_thread');
+  fetchWitnessedSentence(tok, currentContraction, currentBodyZone, chosenFrequency, lastThreadForWitness)
+    .then(aiWitnessed => {
+      if (!isAlive(tok) || !witnessedEl) return;
+      if (aiWitnessed) witnessedEl.textContent = aiWitnessed;
+    });
 
   // Whisper — past session thread
   const whisperEl = document.getElementById('integrateWhisper');
@@ -1412,7 +1452,7 @@ function launchIntegrate() {
 
   if (threadInp) {
     threadInp.value       = '';
-    threadInp.placeholder = lang === 'en' ? 'speak it or write it...' : 'dilo o escríbelo...';
+    threadInp.placeholder = lang === 'en' ? 'write it here...' : 'escríbelo aquí...';
     threadInp.onkeydown   = e => {
       if (e.key === 'Enter' && threadInp.value.trim()) { e.preventDefault(); submitThread(tok); }
     };
@@ -1488,6 +1528,69 @@ const POLARITY_SYSTEM = `You are a field mirror specialising in polarity work. T
 const ANCHOR_SYSTEM = `You are a somatic anchor presence. The person has chosen a frequency state to embody. Your role: one sentence that helps locate this frequency in the body right now. Not "you should" — "this is already here". Max 12 words.`;
 
 const INTEGRATE_SYSTEM = `You are the field at rest. The person completed a session and wrote one true thing. Your role: one line of quiet affirmation — not praise, not analysis. Just presence acknowledging presence. Speak as if the field itself is recognising them. Max 14 words. Never begin with "I". No exclamation marks.`;
+
+const WHISPER_SYSTEM = `You are a quiet field presence. The person has just named what they are carrying. Your role: one brief recognition — not advice, not comfort. Just acknowledgement that this is real and the field has seen it before. 8 words maximum. No punctuation at the end. Lowercase only.`;
+
+const WITNESSED_SYSTEM = `You are the field completing a session. You know: what the person was carrying, where it lived in their body, what frequency they anchored, and what one true thing they wrote. Speak one sentence that witnesses this specific session — not generic, not praise. As if the field itself is reflecting back exactly what happened. Past tense. Max 16 words. No exclamation marks.`;
+
+// ── INTERFERENCE FLASH — field recognises what was named ──
+let interferenceFlashVal = 0;
+let interferenceFlashTgt = 0;
+
+function triggerInterferenceFlash() {
+  interferenceFlashTgt = 1;
+  setTimeout(() => { interferenceFlashTgt = 0; }, 100);
+}
+
+// Hook into render loop — blend flash into coherence glow
+function getFlashCoherence() {
+  interferenceFlashVal += (interferenceFlashTgt - interferenceFlashVal) * 0.12;
+  return Math.max(waveCoherence, interferenceFlashVal * 0.9);
+}
+
+// ── AI ENTER WHISPER ──
+async function fetchEnterWhisper(tok, contraction) {
+  const apiKey = lsGet('f2_api_key');
+  const el = document.getElementById('enterWhisper');
+  if (!el) return;
+  el.classList.remove('visible');
+
+  if (!apiKey) {
+    // Fallback static whispers
+    const fallbacks = {
+      en: { Anxious:'the field knows this one', Afraid:'you are not alone in this',
+            Overwhelmed:'this is real', Exhausted:'it is safe to rest here',
+            default:'the field is here' },
+    };
+    const fb = fallbacks[lang] || fallbacks.en;
+    el.textContent = fb[contraction] || fb.default;
+    el.classList.add('visible');
+    return;
+  }
+
+  const prompt = `The person just named "${contraction}" as what they are carrying. Offer one quiet recognition. 8 words max. Lowercase only.`;
+  try {
+    const res = await callClaude(prompt, WHISPER_SYSTEM, 40);
+    if (!isAlive(tok)) return;
+    if (res) { el.textContent = res.toLowerCase().replace(/[.!?]$/, ''); el.classList.add('visible'); }
+  } catch(e) {
+    el.textContent = 'the field is here';
+    el.classList.add('visible');
+  }
+}
+
+// ── AI WITNESSED SENTENCE ──
+async function fetchWitnessedSentence(tok, contraction, zone, frequency, thread) {
+  const apiKey = lsGet('f2_api_key');
+  if (!apiKey) return null;
+  const zoneStr = zone ? ` in the ${zone}` : '';
+  const threadStr = thread ? ` They wrote: "${thread}".` : '';
+  const prompt = `The person carried "${contraction}"${zoneStr}. They anchored "${frequency}".${threadStr} Write one witnessed sentence for this session. Past tense. Max 16 words.`;
+  try {
+    const res = await callClaude(prompt, WITNESSED_SYSTEM, 60);
+    return res || null;
+  } catch(e) { return null; }
+}
 
 async function callClaude(userMsg, system, maxTokens = 80) {
   const apiKey = lsGet('f2_api_key');
