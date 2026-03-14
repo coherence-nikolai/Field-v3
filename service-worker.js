@@ -1,5 +1,4 @@
-// Cache-first — app works fully offline after first load
-const CACHE = 'field-v7-final';
+const CACHE = 'field-v2-0';
 const PRECACHE = [
   './',
   './index.html',
@@ -8,13 +7,13 @@ const PRECACHE = [
   './manifest.webmanifest',
   './icon-192.png',
   './icon-512.png',
-  'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&display=swap'
+  'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=DM+Sans:wght@300;400&display=swap'
 ];
 
 self.addEventListener('install', e => {
   self.skipWaiting();
   e.waitUntil(
-    caches.open(CACHE).then(cache => cache.addAll(PRECACHE).catch(() => {}))
+    caches.open(CACHE).then(c => c.addAll(PRECACHE).catch(() => {}))
   );
 });
 
@@ -27,27 +26,20 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-  // Skip non-GET and chrome-extension requests
   if (e.request.method !== 'GET') return;
   if (e.request.url.startsWith('chrome-extension')) return;
-
   e.respondWith(
     caches.match(e.request).then(cached => {
       if (cached) {
-        // Return cache immediately, then refresh in background
-        const fetchPromise = fetch(e.request).then(res => {
-          if (res && res.status === 200 && res.type !== 'opaque') {
-            caches.open(CACHE).then(cache => cache.put(e.request, res.clone()));
-          }
-          return res;
+        fetch(e.request).then(res => {
+          if (res && res.status === 200 && res.type !== 'opaque')
+            caches.open(CACHE).then(c => c.put(e.request, res.clone()));
         }).catch(() => {});
         return cached;
       }
-      // Not in cache — fetch and store
       return fetch(e.request).then(res => {
         if (!res || res.status !== 200 || res.type === 'opaque') return res;
-        const clone = res.clone();
-        caches.open(CACHE).then(cache => cache.put(e.request, clone));
+        caches.open(CACHE).then(c => c.put(e.request, res.clone()));
         return res;
       }).catch(() => caches.match('./index.html'));
     })
