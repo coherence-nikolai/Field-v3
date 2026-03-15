@@ -351,46 +351,69 @@ class BreathOrb {
       const p = Math.min(t / this.SETTLE, 1);
       tR = 9 + 4 * Math.sin(p * Math.PI * 1.5);
       tB = 0; tG = 0.6 + 0.2 * Math.sin(p * Math.PI);
-      if (t > this.SETTLE) this.startPhase('inhale');
-
-    } else if (this.phase === 'inhale') {
-      const p    = Math.min(t / this.INHALE, 1);
-      const ease = 1 - Math.pow(1 - p, 3);
-      tR = 9 + (this.MAX_RADIUS - 9) * ease;
-      tB = 0 + 12 * ease;
-      // Glow dims continuously on inhale — going inward
-      tG = 1.1 - 0.65 * ease;
-      if (t > this.INHALE) { this.ripples.push({r: this.dispRadius * 0.8, alpha: 0.5}); this.startPhase('hold'); }
-
-    } else if (this.phase === 'hold') {
-      tR = this.MAX_RADIUS; tB = 12;
-      // Suspended — glow at its dimmest
-      tG = 0.45;
-      if (t > this.HOLD) this.startPhase('exhale');
-
-    } else if (this.phase === 'exhale') {
-      const p    = Math.min(t / this.EXHALE, 1);
-      const ease = p < 0.5 ? 2*p*p : 1 - Math.pow(-2*p+2,2)/2;
-      tR = this.MAX_RADIUS - (this.MAX_RADIUS - 12) * ease;
-      tB = 12 - 12 * ease;
-      // Glow brightens continuously on exhale — coming outward
-      const brightBonus = this.cycleCount === 2 ? 0.9 : this.cycleCount === 1 ? 0.5 : 0.2;
-      tG = 0.45 + (0.85 + brightBonus) * ease;
-      if (t < 60 && this.ripples.length === 0) this.ripples.push({r: 18, alpha: 0.7});
-      if (t > this.EXHALE) {
-        this.cycleCount++;
-        if (this.cycleCount >= this.maxCycles) {
-          this.startPhase('crystallised');
-          if (this.onCyclesDone) setTimeout(() => this.onCyclesDone(), 600);
-        } else { this.startPhase('rest'); }
+      if (t > this.SETTLE) {
+        this.breathClock = 0;
+        this.startPhase('inhale');
       }
 
-    } else if (this.phase === 'rest') {
-      // Bridge smoothly — tG eases toward inhale start value
-      tR = this.dispRadius * 0.88 + 11 * 0.12;
-      tB = this.dispBlur * 0.80;
-      tG = 1.05;
-      if (t > this.REST) this.startPhase('inhale');
+    } else if (this.phase === 'inhale' || this.phase === 'hold' ||
+               this.phase === 'exhale' || this.phase === 'rest') {
+      // ── CONTINUOUS BREATH — one smooth curve, no phase boundaries ──
+      const CYCLE = this.INHALE + this.HOLD + this.EXHALE + this.REST;
+      if (this.breathClock === undefined) this.breathClock = 0;
+      this.breathClock += 16;
+      const ct  = this.breathClock % CYCLE;
+      const cp  = ct / CYCLE;
+      const iP  = this.INHALE / CYCLE;
+      const hP  = (this.INHALE + this.HOLD) / CYCLE;
+      const eP  = (this.INHALE + this.HOLD + this.EXHALE) / CYCLE;
+
+      // Smooth breathP: 0=contracted, 1=fully expanded
+      let breathP;
+      if (cp < iP) {
+        const x = cp / iP;
+        breathP = 1 - Math.pow(1 - x, 2.5);
+      } else if (cp < hP) {
+        breathP = 1.0;
+      } else if (cp < eP) {
+        const x = (cp - hP) / (eP - hP);
+        breathP = 1 - (x < 0.5 ? 2*x*x : 1-Math.pow(-2*x+2,2)/2);
+      } else {
+        const x = (cp - eP) / (1 - eP);
+        breathP = 0.05 * (1 - x); // gentle rest near zero
+      }
+
+      tR = 9 + (this.MAX_RADIUS - 9) * breathP;
+      tB = breathP * 11;
+      // Pure smooth curve — glow inversely follows breathP with no conditionals
+      // Bright when contracted (exhale/rest), dim when expanded (inhale/hold)
+      // cycleCount bonus eases in gradually, never jumps
+      const cycleBonus = Math.min(this.cycleCount / this.maxCycles, 1) * 0.6;
+      tG = 0.42 + (0.85 + cycleBonus) * (1 - breathP);
+
+      // Phase change events for audio/text/dots — fired once per crossing
+      const prevCt = Math.max(0, this.breathClock - 16) % CYCLE;
+      const prevCp = prevCt / CYCLE;
+
+      if (prevCp > 0.95 && cp < 0.05) {
+        if (this.onPhaseChange) this.onPhaseChange('inhale', this.cycleCount);
+      }
+      if (prevCp < hP && cp >= hP) {
+        this.ripples.push({r: this.dispRadius * 0.8, alpha: 0.5});
+        if (this.onPhaseChange) this.onPhaseChange('hold', this.cycleCount);
+      }
+      if (prevCp < hP + 0.01 && cp >= hP + 0.01 && cp < hP + 0.03) {
+        if (this.onPhaseChange) this.onPhaseChange('exhale', this.cycleCount);
+      }
+      if (prevCp < eP && cp >= eP) {
+        this.cycleCount++;
+        if (this.onPhaseChange) this.onPhaseChange('rest', this.cycleCount - 1);
+        if (this.cycleCount >= this.maxCycles) {
+          this.breathClock = 0;
+          this.startPhase('crystallised');
+          if (this.onCyclesDone) setTimeout(() => this.onCyclesDone(), 600);
+        }
+      }
 
     } else if (this.phase === 'crystallised') {
       tR = 12 + 5 * Math.sin(t * 0.002);
@@ -398,15 +421,13 @@ class BreathOrb {
       this.wordGlowIntensity = 1;
 
     } else if (this.phase === 'morph') {
-      // Full-screen bloom — expands to fill, rose-violet blend, then dissolves
       const p    = Math.min(t / this.MORPH_DURATION, 1);
-      const ease = p < 0.5 ? 2*p*p : 1 - Math.pow(-2*p+2,2)/2;
+      const ease = p < 0.5 ? 2*p*p : 1-Math.pow(-2*p+2,2)/2;
       const FULL = Math.max(innerWidth, innerHeight) * 0.85;
-      tR = 12 + (FULL - 12) * ease;  // expand to near full screen
-      tB = ease * 28;                  // heavy blur at peak
-      // Hold glow bright until 70% then fade
+      tR = 12 + (FULL - 12) * ease;
+      tB = ease * 28;
       tG = p < 0.7 ? 1.8 : 1.8 * (1 - (p - 0.7) / 0.3);
-      this.alpha = p < 0.6 ? 1 : 1 - (p - 0.6) / 0.4; // fade alpha from 60% onward
+      this.alpha = p < 0.6 ? 1 : 1 - (p - 0.6) / 0.4;
       this.wordScale = Math.max(0, 1 - ease * 1.4);
       if (t > this.MORPH_DURATION) {
         this.phase = 'done';
@@ -414,7 +435,7 @@ class BreathOrb {
       }
     }
 
-    const ls = this.phase === 'exhale' ? 0.038 : 0.028;
+    const ls = 0.022; // uniform slow easing — no sudden jumps
     this.dispRadius += ((tR||9)  - this.dispRadius) * ls;
     this.dispBlur   += ((tB||0)  - this.dispBlur)   * ls;
     this.dispGlow   += ((tG||1)  - this.dispGlow)   * ls;
@@ -885,13 +906,114 @@ function setLang(l) {
 function applyLang() {
   document.documentElement.lang = lang;
   const t = TRANSLATIONS[lang];
+
+  // Home
   const ha = document.getElementById('homeArrival');
   if (ha) ha.textContent = t.arrival;
-  const en = document.getElementById('langEn');
-  const es = document.getElementById('langEs');
-  if (en) en.classList.toggle('active', lang === 'en');
-  if (es) es.classList.toggle('active', lang === 'es');
+
+  // Lang toggles
+  ['langEn','langEs','introLangEn','introLangEs'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('active',
+      (id === 'langEn' || id === 'introLangEn') ? lang === 'en' : lang === 'es');
+  });
+
   updateHomeCount();
+
+  // Re-render active phase screen
+  const active = document.querySelector('.screen.active');
+  if (!active) return;
+  const id = active.id;
+
+  if (id === 's-enter') {
+    // Re-render pill grid
+    const grid = document.getElementById('contractionGrid');
+    if (grid) {
+      grid.innerHTML = '';
+      CONTRACTIONS[lang].forEach((c, i) => {
+        const enKey = CONTRACTIONS.en[i];
+        const btn = document.createElement('button');
+        btn.className = 'contraction-pill al';
+        btn.textContent = c;
+        btn.style.setProperty('--drift-dur', (2.8 + Math.random() * 2).toFixed(2) + 's');
+        btn.onclick = () => selectContraction(enKey, btn);
+        grid.appendChild(btn);
+      });
+    }
+    // Update placeholder and continue button
+    const inp = document.getElementById('somethingElseInput');
+    if (inp) inp.placeholder = lang === 'en' ? 'name it here...' : 'nómbralo aquí...';
+    setText('enterContinue', t.continueBtn);
+  }
+
+  else if (id === 's-notice') {
+    setText('pname-notice', t.noticeLabel.toUpperCase());
+    setText('notice-prompt', t.noticePrompt);
+    setText('fwdNotice', t.continueBtn);
+  }
+
+  else if (id === 's-hold') {
+    setText('pname-hold', t.holdLabel.toUpperCase());
+    setText('hold-prompt', t.holdPrompt);
+    setText('fwdHold', t.continueBtn);
+  }
+
+  else if (id === 's-anchor') {
+    setText('pname-anchor', t.anchorLabel.toUpperCase());
+    // Re-render heavy truth with translated contraction name
+    const idx = CONTRACTIONS.en.indexOf(currentContraction);
+    const displayName = idx >= 0 ? CONTRACTIONS[lang][idx] : currentContraction;
+    const pH = document.getElementById('polarityHeavy');
+    if (pH && pH.textContent) {
+      pH.textContent = lang === 'en'
+        ? `I am carrying ${displayName}.`
+        : `Estoy cargando ${displayName}.`;
+    }
+    const pAnd = document.getElementById('polarityAnd');
+    if (pAnd && pAnd.textContent) pAnd.textContent = lang === 'en' ? 'and' : 'y';
+    const pH2 = document.getElementById('polarityHold');
+    if (pH2 && pH2.textContent) {
+      pH2.textContent = lang === 'en'
+        ? 'hold both · neither needs resolving'
+        : 'sostén ambos · ninguno necesita resolverse';
+    }
+    setText('fwdAnchor1', t.continueBtn);
+  }
+
+  else if (id === 's-freq') {
+    setText('freqLabel', lang === 'en' ? 'which frequency calls you?' : '¿qué frecuencia te llama?');
+    // Re-render frequency pills
+    const freqGrid = document.getElementById('freqGrid');
+    if (freqGrid) {
+      const smartKeys = FREQ_MAP[currentContraction] || ['Steady','Open','Clear','Present'];
+      freqGrid.innerHTML = '';
+      smartKeys.forEach(key => {
+        const freqData = FREQUENCIES[lang].find((f,i) => FREQUENCIES.en[i]?.name === key);
+        if (!freqData) return;
+        const btn = document.createElement('button');
+        btn.className = 'freq-pill';
+        btn.innerHTML = `<span class="freq-name">${freqData.name}</span><span class="freq-hint">${freqData.hint}</span>`;
+        btn.onclick = () => selectFrequency(key, btn);
+        freqGrid.appendChild(btn);
+      });
+    }
+  }
+
+  else if (id === 's-breath') {
+    // Update breath cues if visible
+    const btext = document.getElementById('breathText');
+    // Just update the phase label — live cues update on next phase change
+    setText('pname-breath', t.holdLabel.toUpperCase());
+  }
+
+  else if (id === 's-integrate') {
+    setText('pname-integrate', t.integrateLabel.toUpperCase());
+    setText('integratePromptLbl', t.threadPrompt);
+    const inp = document.getElementById('integrateInput');
+    if (inp) inp.placeholder = lang === 'en' ? 'write it here...' : 'escríbelo aquí...';
+    const retBtn = document.getElementById('integrateReturn');
+    if (retBtn) retBtn.textContent = t.retBtn;
+  }
 }
 
 function setText(id, txt) {
@@ -1336,45 +1458,47 @@ async function fetchPolarityComplement(tok, pL, fwd, pH2) {
 
 // ── ANCHOR SCREEN 2 — frequency selection ──
 const FREQ_MAP = {
-  Anxious:      ['Steady','Present','Trusting','Held'],
-  Afraid:       ['Steady','Trusting','Held','Present'],
-  Dreading:     ['Present','Trusting','Steady','Open'],
-  Panicking:    ['Steady','Present','Held','Spacious'],
-  Unsafe:       ['Held','Steady','Trusting','Present'],
-  Overwhelmed:  ['Spacious','Steady','Present','Clear'],
-  Scattered:    ['Clear','Present','Steady','Spacious'],
-  Fragmented:   ['Spacious','Held','Clear','Steady'],
-  Spinning:     ['Steady','Present','Spacious','Clear'],
-  Flooded:      ['Spacious','Steady','Present','Held'],
-  Stuck:        ['Open','Clear','Trusting','Present'],
-  Frozen:       ['Open','Trusting','Present','Steady'],
-  Paralysed:    ['Present','Open','Steady','Trusting'],
-  Trapped:      ['Open','Spacious','Trusting','Clear'],
-  Contracted:   ['Open','Spacious','Luminous','Trusting'],
-  Heavy:        ['Spacious','Held','Open','Luminous'],
-  Exhausted:    ['Held','Spacious','Steady','Present'],
-  Depleted:     ['Held','Steady','Spacious','Trusting'],
-  Defeated:     ['Trusting','Open','Held','Luminous'],
-  Hopeless:     ['Luminous','Trusting','Open','Held'],
-  Disconnected: ['Held','Open','Present','Spacious'],
-  Alone:        ['Held','Present','Open','Trusting'],
-  Unseen:       ['Present','Held','Luminous','Open'],
-  Abandoned:    ['Held','Trusting','Present','Steady'],
-  Invisible:    ['Luminous','Present','Held','Open'],
-  Unworthy:     ['Luminous','Trusting','Held','Present'],
-  Ashamed:      ['Held','Luminous','Open','Trusting'],
-  'Not enough': ['Luminous','Trusting','Spacious','Open'],
-  Broken:       ['Held','Trusting','Open','Luminous'],
-  Hollow:       ['Luminous','Open','Held','Spacious'],
-  Angry:        ['Spacious','Clear','Open','Present'],
-  Resentful:    ['Open','Clear','Spacious','Present'],
-  Bitter:       ['Open','Luminous','Spacious','Trusting'],
-  Jealous:      ['Open','Trusting','Spacious','Clear'],
-  Grieving:     ['Held','Spacious','Open','Luminous'],
-  Numb:         ['Present','Open','Luminous','Held'],
-  Flat:         ['Luminous','Open','Present','Spacious'],
-  Empty:        ['Open','Luminous','Spacious','Held'],
-  Absent:       ['Present','Open','Held','Luminous'],
+  Anxious:       ['Steady','Present','Trusting','Held'],
+  Afraid:        ['Steady','Trusting','Held','Present'],
+  Dreading:      ['Present','Trusting','Steady','Open'],
+  Panicking:     ['Steady','Present','Held','Spacious'],
+  Unsafe:        ['Held','Steady','Trusting','Present'],
+  Overwhelmed:   ['Spacious','Steady','Present','Clear'],
+  Scattered:     ['Clear','Present','Steady','Spacious'],
+  Spiralling:    ['Steady','Present','Spacious','Clear'],
+  Swamped:       ['Spacious','Steady','Present','Held'],
+  Restless:      ['Present','Steady','Clear','Open'],
+  Stuck:         ['Open','Clear','Trusting','Present'],
+  Frozen:        ['Open','Trusting','Present','Steady'],
+  Trapped:       ['Open','Spacious','Trusting','Clear'],
+  'Closed off':  ['Open','Spacious','Luminous','Trusting'],
+  Confused:      ['Clear','Present','Steady','Open'],
+  Heavy:         ['Spacious','Held','Open','Luminous'],
+  Exhausted:     ['Held','Spacious','Steady','Present'],
+  Drained:       ['Held','Steady','Spacious','Trusting'],
+  Defeated:      ['Trusting','Open','Held','Luminous'],
+  'No way out':  ['Luminous','Trusting','Open','Held'],
+  Disconnected:  ['Held','Open','Present','Spacious'],
+  Alone:         ['Held','Present','Open','Trusting'],
+  Unseen:        ['Present','Held','Luminous','Open'],
+  'Left behind': ['Held','Trusting','Present','Steady'],
+  Invisible:     ['Luminous','Present','Held','Open'],
+  'Not enough':  ['Luminous','Trusting','Spacious','Open'],
+  Ashamed:       ['Held','Luminous','Open','Trusting'],
+  Guilty:        ['Open','Trusting','Clear','Held'],
+  Broken:        ['Held','Trusting','Open','Luminous'],
+  Raw:           ['Held','Spacious','Present','Open'],
+  Angry:         ['Spacious','Clear','Open','Present'],
+  Resentful:     ['Open','Clear','Spacious','Present'],
+  Bitter:        ['Open','Luminous','Spacious','Trusting'],
+  Jealous:       ['Open','Trusting','Spacious','Clear'],
+  Grieving:      ['Held','Spacious','Open','Luminous'],
+  Numb:          ['Present','Open','Luminous','Held'],
+  Flat:          ['Luminous','Open','Present','Spacious'],
+  'Not here':    ['Present','Open','Held','Luminous'],
+  Lost:          ['Present','Steady','Trusting','Open'],
+  'Given up':    ['Trusting','Held','Open','Luminous'],
+  Pressured:     ['Spacious','Steady','Clear','Present'],
 };
 
 function advanceToFreq() {
@@ -1539,19 +1663,27 @@ function launchIntegrate() {
   triggerWaveConvergence(); // dramatic visual payoff
   setText('pname-integrate', t.integrateLabel.toUpperCase());
 
-  // Witnessed sentence — AI generated, falls back to static
+  // Witnessed sentence — wait for AI, fall back to static only if AI fails
   const witnessedEl = document.getElementById('integrateWitnessed');
   const wKey        = currentContraction;
   const staticWitnessed = (WITNESSED[lang] && WITNESSED[lang][wKey]) || '';
-  if (witnessedEl) { witnessedEl.textContent = staticWitnessed; witnessedEl.classList.remove('visible'); }
+  // Start hidden — no text set yet to avoid swap flicker
+  if (witnessedEl) { witnessedEl.textContent = ''; witnessedEl.classList.remove('visible'); }
 
-  // Try AI-generated witnessed sentence in background
   const lastThreadForWitness = lsGet('f2_thread');
-  fetchWitnessedSentence(tok, currentContraction, currentBodyZone, chosenFrequency, lastThreadForWitness)
-    .then(aiWitnessed => {
+  const apiKey = lsGet('f2_api_key');
+
+  // Resolve witnessed sentence before showing it
+  const resolveWitnessed = async () => {
+    if (apiKey) {
+      const aiWitnessed = await fetchWitnessedSentence(tok, currentContraction, currentBodyZone, chosenFrequency, lastThreadForWitness);
       if (!isAlive(tok) || !witnessedEl) return;
-      if (aiWitnessed) witnessedEl.textContent = aiWitnessed;
-    });
+      witnessedEl.textContent = aiWitnessed || staticWitnessed;
+    } else {
+      if (witnessedEl) witnessedEl.textContent = staticWitnessed;
+    }
+  };
+  resolveWitnessed();
 
   // Whisper — past session thread
   const whisperEl = document.getElementById('integrateWhisper');
@@ -1795,11 +1927,11 @@ function playIntroAnimation() {
 
   let t = 0;
   const W = innerWidth, H = innerHeight;
-  const TOTAL = 1500; // frames ~25s at 60fps
+  const TOTAL = 1500;
 
-  // Two wave objects — at 25%/75% so both visible, ease to home positions at end
-  const INTRO_ROSE_Y   = 0.25;
-  const INTRO_VIOLET_Y = 0.75;
+  // Waves at 30%/70% — clearly visible, in relationship, clear of edges
+  const INTRO_ROSE_Y   = 0.30;
+  const INTRO_VIOLET_Y = 0.70;
   const iRose   = { phase: 0, phaseV: 0.022, amp: 0.055, y: INTRO_ROSE_Y,   color: '200,130,110', alpha: 0 };
   const iViolet = { phase: Math.PI*0.6, phaseV: 0.028, amp: 0.050, y: INTRO_VIOLET_Y, color: '152,128,184', alpha: 0 };
 
@@ -1807,7 +1939,6 @@ function playIntroAnimation() {
     const centreY = wave.y * H;
     const amp     = wave.amp * H;
     ic.save();
-    // corona
     ic.beginPath();
     for (let i = 0; i <= W; i += 3) {
       const p = Math.sin(i*0.0016*(W/380)+wave.phase)*amp + Math.sin(i*0.0034*(W/380)+wave.phase*1.3)*amp*0.3;
@@ -1816,7 +1947,6 @@ function playIntroAnimation() {
     ic.strokeStyle = `rgba(${wave.color},${(wave.alpha*0.2).toFixed(3)})`;
     ic.lineWidth = 22; ic.lineCap = 'round';
     ic.filter = 'blur(7px)'; ic.stroke(); ic.filter = 'none';
-    // core
     ic.beginPath();
     for (let i = 0; i <= W; i += 3) {
       const p = Math.sin(i*0.0016*(W/380)+wave.phase)*amp + Math.sin(i*0.0034*(W/380)+wave.phase*1.3)*amp*0.3;
@@ -1831,133 +1961,107 @@ function playIntroAnimation() {
   function introLoop() {
     ic.clearRect(0, 0, W, H);
     t++;
-
     const p = t / TOTAL;
-
-    // ── PHASE PLAN ──
-    // 0.00–0.15  Rose fades in — independent, lively
-    // 0.18–0.35  Violet fades in — different rhythm, no relationship yet
-    // 0.35–0.60  Both slow gradually — starting to sense each other
-    // 0.60–0.80  Same speed, in phase — synchronised, still apart
-    //            Interference glow brightens between them
-    // 0.78–0.88  "Resonance" fades in at centre
-    // 0.88–1.00  Canvas fades out — crossfade to home
 
     // Alpha
     iRose.alpha   = Math.min(1, p / 0.13);
     iViolet.alpha = Math.min(1, Math.max(0, (p - 0.18) / 0.14));
 
-    // Phase velocity — waves slow together, find same rhythm
-    // Rose starts at 0.022, violet at 0.028 — different speeds
-    // By p=0.65 both settle to ~0.007 — same speed = synchronised
-    const syncP = Math.min(1, Math.max(0, (p - 0.35) / 0.30));
+    // Sync — waves find same rhythm
+    const syncP    = Math.min(1, Math.max(0, (p - 0.35) / 0.30));
     const syncEase = syncP < 0.5 ? 2*syncP*syncP : 1-Math.pow(-2*syncP+2,2)/2;
-    const roseV   = 0.022 - (0.022 - 0.007) * syncEase;
-    const violetV = 0.028 - (0.028 - 0.007) * syncEase;
-    iRose.phase   += roseV;
-    iViolet.phase += violetV;
-
-    // Waves stay at their positions — no vertical movement
-    // They are ALWAYS apart — synchronisation is about rhythm not position
-    iRose.y   = WAVE_TOP_FRAC;
-    iViolet.y = WAVE_BOT_FRAC;
-
-    // Amplitude: slightly reduces as they synchronise (steadier)
+    iRose.phase   += 0.022 - (0.015) * syncEase;
+    iViolet.phase += 0.028 - (0.021) * syncEase;
     iRose.amp   = 0.055 - 0.015 * syncEase;
     iViolet.amp = 0.050 - 0.013 * syncEase;
 
-    // Interference glow — grows as waves synchronise
-    const glowP = Math.min(1, Math.max(0, (p - 0.55) / 0.25));
-    const glowFade = p > 0.88 ? Math.max(0, 1 - (p-0.88)/0.12) : 1;
-    if (glowP > 0.05) {
-      ic.save();
-      const g = ic.createRadialGradient(W*.5, H*.5, 0, W*.5, H*.5, Math.min(W,H)*(0.25+glowP*0.3));
-      g.addColorStop(0,  `rgba(220,180,240,${(glowP*0.18*glowFade).toFixed(3)})`);
-      g.addColorStop(.5, `rgba(185,145,200,${(glowP*0.08*glowFade).toFixed(3)})`);
-      g.addColorStop(1,  'rgba(152,128,184,0)');
-      ic.fillStyle = g;
-      ic.fillRect(0, 0, W, H);
-      ic.restore();
+    // Ease waves to home positions during fadeout
+    if (p > 0.88) {
+      const e = Math.min(1, (p - 0.88) / 0.12);
+      iRose.y   = INTRO_ROSE_Y   + (WAVE_TOP_FRAC - INTRO_ROSE_Y)   * e;
+      iViolet.y = INTRO_VIOLET_Y + (WAVE_BOT_FRAC - INTRO_VIOLET_Y) * e;
     }
 
-    // Waves stay at 25%/75% then ease to home positions during final crossfade
-    if (p > 0.88) {
-      const ease = Math.min(1, (p - 0.88) / 0.12);
-      iRose.y   = INTRO_ROSE_Y   + (WAVE_TOP_FRAC - INTRO_ROSE_Y)   * ease;
-      iViolet.y = INTRO_VIOLET_Y + (WAVE_BOT_FRAC - INTRO_VIOLET_Y) * ease;
+    // Interference glow
+    const glowP    = Math.min(1, Math.max(0, (p - 0.55) / 0.25));
+    const glowFade = p > 0.85 ? Math.max(0, 1-(p-0.85)/0.13) : 1;
+    if (glowP > 0.05) {
+      ic.save();
+      const g = ic.createRadialGradient(W*.5,H*.5,0,W*.5,H*.5,Math.min(W,H)*(0.2+glowP*0.3));
+      g.addColorStop(0, `rgba(220,180,240,${(glowP*0.18*glowFade).toFixed(3)})`);
+      g.addColorStop(.5,`rgba(185,145,200,${(glowP*0.08*glowFade).toFixed(3)})`);
+      g.addColorStop(1, 'rgba(152,128,184,0)');
+      ic.fillStyle = g; ic.fillRect(0,0,W,H); ic.restore();
     }
 
     drawIntroWave(iRose);
     drawIntroWave(iViolet);
 
-    // ── TEXT MOMENTS ──
-    // Moment 1: "what you hold" — appears as rose wave fades in
-    const t1p = Math.min(1, Math.max(0, (p - 0.10) / 0.08));
-    const t1fade = p > 0.28 ? Math.max(0, 1 - (p-0.28)/0.10) : 1;
+    // Text 1: "what you hold" — ABOVE rose wave, clear of it
+    const t1p    = Math.min(1, Math.max(0, (p-0.08)/0.18)); // slow 2s fade in
+    const t1fade = p > 0.32 ? Math.max(0, 1-(p-0.32)/0.14) : 1; // gentle fade out
     if (t1p > 0.01) {
+      const textY = H * INTRO_ROSE_Y - H * 0.09;
       ic.save();
-      ic.globalAlpha = t1p * t1fade * 0.82;
-      ic.font = `300 italic ${Math.min(W*0.065, 28)}px 'Cormorant Garamond', Georgia, serif`;
-      ic.textAlign = 'center'; ic.textBaseline = 'middle';
-      ic.fillStyle = `rgba(200,130,110,1)`;
-      ic.shadowColor = 'rgba(200,130,110,0.4)'; ic.shadowBlur = 12;
-      ic.fillText(lang === 'en' ? 'what you hold' : 'lo que sostienes', W*0.5, H * WAVE_TOP_FRAC);
+      ic.globalAlpha = t1p * t1fade * 0.88;
+      ic.font = `300 italic ${Math.min(W*0.065,28)}px 'Cormorant Garamond',Georgia,serif`;
+      ic.textAlign='center'; ic.textBaseline='middle';
+      ic.fillStyle='rgba(200,130,110,1)';
+      ic.shadowColor='rgba(200,130,110,0.35)'; ic.shadowBlur=10;
+      ic.fillText(lang==='en'?'what you hold':'lo que sostienes', W*0.5, textY);
       ic.restore();
     }
 
-    // Moment 2: "what is also true" — appears as violet wave fades in
-    const t2p = Math.min(1, Math.max(0, (p - 0.28) / 0.08));
-    const t2fade = p > 0.48 ? Math.max(0, 1 - (p-0.48)/0.10) : 1;
+    // Text 2: "what is also true" — BELOW violet wave, clear of it
+    const t2p    = Math.min(1, Math.max(0, (p-0.26)/0.18)); // slow 2s fade in
+    const t2fade = p > 0.52 ? Math.max(0, 1-(p-0.52)/0.14) : 1;
     if (t2p > 0.01) {
+      const textY = H * INTRO_VIOLET_Y + H * 0.09;
       ic.save();
-      ic.globalAlpha = t2p * t2fade * 0.78;
-      ic.font = `300 italic ${Math.min(W*0.065, 28)}px 'Cormorant Garamond', Georgia, serif`;
-      ic.textAlign = 'center'; ic.textBaseline = 'middle';
-      ic.fillStyle = `rgba(152,128,184,1)`;
-      ic.shadowColor = 'rgba(152,128,184,0.4)'; ic.shadowBlur = 12;
-      ic.fillText(lang === 'en' ? 'what is also true' : 'lo que también es verdad', W*0.5, H * WAVE_BOT_FRAC);
+      ic.globalAlpha = t2p * t2fade * 0.82;
+      ic.font = `300 italic ${Math.min(W*0.065,28)}px 'Cormorant Garamond',Georgia,serif`;
+      ic.textAlign='center'; ic.textBaseline='middle';
+      ic.fillStyle='rgba(152,128,184,1)';
+      ic.shadowColor='rgba(152,128,184,0.35)'; ic.shadowBlur=10;
+      ic.fillText(lang==='en'?'what is also true':'lo que también es verdad', W*0.5, textY);
       ic.restore();
     }
 
-    // Moment 3: "Resonance" — slow cinematic bloom, scale from 0.88 to 1.0
-    const nameP = Math.min(1, Math.max(0, (p - 0.72) / 0.16)); // slower fade in
-    const nameFade = p > 0.90 ? Math.max(0, 1 - (p-0.90)/0.08) : 1;
+    // Text 3: Resonance — slow cinematic bloom
+    const nameP    = Math.min(1, Math.max(0, (p-0.68)/0.18));
+    const nameFade = p > 0.88 ? Math.max(0, 1-(p-0.88)/0.10) : 1;
     if (nameP > 0.01) {
       const nameAlpha = nameP * nameFade;
-      const scale = 0.88 + nameP * 0.12; // grows from 0.88→1.0
+      const scale = 0.88 + nameP * 0.12;
       ic.save();
-      const fs = Math.min(W * 0.14, 64);
-      ic.globalAlpha  = nameAlpha;
-      // Glow bloom — expands as title arrives
-      const glowR = Math.min(W,H) * (0.15 + nameP * 0.25);
-      const gg = ic.createRadialGradient(W*0.5, H*0.5, 0, W*0.5, H*0.5, glowR);
-      gg.addColorStop(0,  `rgba(220,150,110,${(nameAlpha*0.35).toFixed(3)})`);
-      gg.addColorStop(1,  'rgba(200,130,110,0)');
-      ic.fillStyle = gg; ic.fillRect(0,0,W,H);
-      // Title text with scale
+      const fs = Math.min(W*0.14, 64);
+      ic.globalAlpha = nameAlpha;
+      const glowR = Math.min(W,H)*(0.12+nameP*0.22);
+      const gg = ic.createRadialGradient(W*.5,H*.5,0,W*.5,H*.5,glowR);
+      gg.addColorStop(0, `rgba(220,150,110,${(nameAlpha*0.32).toFixed(3)})`);
+      gg.addColorStop(1, 'rgba(200,130,110,0)');
+      ic.fillStyle=gg; ic.fillRect(0,0,W,H);
       ic.translate(W*0.5, H*0.5);
       ic.scale(scale, scale);
-      ic.shadowColor  = `rgba(200,130,110,${(nameAlpha * 0.7).toFixed(2)})`;
-      ic.shadowBlur   = 32 + nameP * 20;
-      ic.fillStyle    = `rgba(220,170,140,1)`;
-      ic.font         = `300 italic ${fs}px 'Cormorant Garamond', Georgia, serif`;
-      ic.textAlign    = 'center';
-      ic.textBaseline = 'middle';
+      ic.shadowColor=`rgba(200,130,110,${(nameAlpha*0.7).toFixed(2)})`;
+      ic.shadowBlur = 32 + nameP*20;
+      ic.fillStyle='rgba(220,170,140,1)';
+      ic.font=`300 italic ${fs}px 'Cormorant Garamond',Georgia,serif`;
+      ic.textAlign='center'; ic.textBaseline='middle';
       ic.fillText('Resonance', 0, 0);
       ic.restore();
     }
 
-    // Canvas fade out at end — smooth crossfade
+    // Fade to black — then endIntroAnimation handles home fade-in
     if (p > 0.88) {
-      const fadeOut = Math.min(1, (p - 0.88) / 0.12);
+      const fadeOut = Math.min(1, (p-0.88)/0.12);
       ic.save();
       ic.globalAlpha = fadeOut;
-      ic.fillStyle   = `#080610`;
-      ic.fillRect(0, 0, W, H);
+      ic.fillStyle = '#080610';
+      ic.fillRect(0,0,W,H);
       ic.restore();
     }
 
-    // Show skip hint after 2s
     if (t === 120 && skip) skip.classList.add('visible');
 
     if (t < TOTAL) {
@@ -2056,13 +2160,33 @@ function endIntroAnimation() {
   introPlayed = true;
   const skip = document.getElementById('introSkip');
   if (skip) skip.classList.remove('visible');
-  // Waves are already at WAVE_TOP_FRAC / WAVE_BOT_FRAC — crossfade is seamless
-  showScreen('s-home', () => {
-    document.querySelectorAll('.al').forEach(a => a.classList.add('on'));
-    setTimeout(tryDrone, 200);
-  });
+
+  // Fade home in over intro — seamless
+  const home  = document.getElementById('s-home');
+  const intro = document.getElementById('s-intro');
+
+  // Home starts invisible, fades in
+  if (home) {
+    home.style.opacity = '0';
+    home.style.transition = 'none';
+    home.classList.add('active');
+  }
+  if (intro) intro.classList.remove('active');
+
   applyLang();
   applyDawnPalette();
+  document.querySelectorAll('.al').forEach(a => a.classList.add('on'));
+
+  // Fade home in
+  requestAnimationFrame(() => {
+    if (home) {
+      home.style.transition = 'opacity 0.9s ease';
+      home.style.opacity = '1';
+      setTimeout(() => { home.style.transition = ''; home.style.opacity = ''; }, 950);
+    }
+  });
+
+  setTimeout(tryDrone, 400);
 }
 
 // ── INTEGRATE WAVE CONVERGENCE ──

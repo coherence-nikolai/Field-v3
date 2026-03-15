@@ -297,10 +297,10 @@ b, strong { font-weight: 400; }
 }
 .intro-skip {
   position: absolute;
-  bottom: clamp(40px,10vw,60px);
+  bottom: clamp(28px,7vw,40px);
   left: 50%; transform: translateX(-50%);
   font-family: var(--sans);
-  font-size: clamp(12px,3vw,15px);
+  font-size: clamp(11px,2.8vw,13px);
   letter-spacing: .22em;
   color: rgba(237,224,212,.22);
   text-transform: lowercase;
@@ -308,20 +308,21 @@ b, strong { font-weight: 400; }
   transition: opacity 1.5s ease;
   pointer-events: none;
   white-space: nowrap;
+  z-index: 20;
 }
 .intro-skip.visible { opacity: 1; pointer-events: all; cursor: pointer; }
 
 .intro-lang {
   position: absolute;
-  bottom: clamp(80px,16vw,100px);
+  top: clamp(52px,12vw,68px);
   left: 50%; transform: translateX(-50%);
   display: inline-flex;
   align-items: center;
   gap: 2px;
   padding: 3px;
-  border: 1px solid rgba(152,128,184,.18);
+  border: 1px solid rgba(152,128,184,.22);
   border-radius: 999px;
-  background: rgba(8,6,16,.6);
+  background: rgba(8,6,16,.7);
   z-index: 20;
 }
 
