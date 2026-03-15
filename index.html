@@ -19,6 +19,7 @@
 </style>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
 <style>
 /* ── ROOT ── */
 :root {
@@ -375,6 +376,27 @@ b, strong { font-weight: 400; }
   max-width: 320px;
 }
 .home-enter-btn:active { opacity: .7; }
+
+.home-begin-btn {
+  font-family: var(--sans);
+  font-size: clamp(13px,3.2vw,16px);
+  letter-spacing: .16em;
+  color: rgba(237,200,175,.88);
+  background: rgba(18,10,24,.92);
+  border: 1px solid rgba(200,130,110,.45);
+  border-radius: 999px;
+  padding: 14px 40px;
+  cursor: pointer;
+  margin-top: clamp(20px,5vw,28px);
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color .3s ease, color .3s ease, box-shadow .3s ease;
+  animation: pulse 2.8s ease-in-out infinite;
+  box-shadow: 0 0 20px rgba(200,130,110,.12);
+}
+.home-begin-btn:hover {
+  border-color: rgba(200,130,110,.75);
+  box-shadow: 0 0 28px rgba(200,130,110,.22);
+}
 
 .home-enter-question {
   font-family: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
@@ -1239,6 +1261,7 @@ body.fs-large .enter-question { font-size: clamp(26px,7vw,40px); }
   <button class="home-enter-btn" id="homeEnterBtn" onclick="startNotice()" ontouchend="this._t=1" onmousedown="this._t=1">
     <span class="home-enter-question" id="homeArrival">What are you holding right now?</span>
   </button>
+  <button class="home-begin-btn" onclick="startNotice()">begin →</button>
 
   <div class="home-bottom">
     <div class="home-pattern" id="homePattern"></div>

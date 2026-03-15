@@ -387,9 +387,10 @@ class BreathOrb {
 
       tR = 9 + (this.MAX_RADIUS - 9) * breathP;
       tB = breathP * 11;
-      // Pure glow formula — no conditionals
-      const cycleBonus = Math.min(this.cycleCount / this.maxCycles, 1) * 0.55;
-      tG = 0.58 + (0.72 + cycleBonus) * (1 - breathP);
+      // Glow only ever bright — floor 0.85, peaks on exhale, grows each cycle
+      const cycleBonus = Math.min(this.cycleCount / this.maxCycles, 1) * 0.7;
+      const exhaleP = cp > hP ? Math.min(1, (cp - hP) / (eP - hP)) : 0;
+      tG = 0.85 + (0.65 + cycleBonus) * exhaleP;
 
       // Phase crossings — use cyclesSoFar + cp to detect transitions cleanly
       const prevCt  = Math.max(0, this.breathClock - 16) - cyclesSoFar * CYCLE;
@@ -1118,6 +1119,7 @@ function updatePatternMirror() {
 // ── HOME ──
 function goHome() {
   if (voiceActive) stopVoiceNote(false);
+  bgDimTgt = 0; // reset background dim fully
   nextToken();
   breathOrb = null;
   fadeDrone(true, 1.5);
@@ -1822,7 +1824,7 @@ function launchIntegrate() {
     }, 3500);
     setTimeout(() => { if (isAlive(tok) && whisperEl && lastThread) whisperEl.classList.add('visible'); }, 5500);
     setTimeout(() => { if (isAlive(tok) && threadWrap) { threadWrap.classList.add('visible'); setTimeout(() => threadInp && threadInp.focus(), 200); } }, 7000);
-    setTimeout(() => { if (isAlive(tok) && returnBtn) returnBtn.classList.add('visible'); }, 10000);
+    setTimeout(() => { if (isAlive(tok) && returnBtn) returnBtn.classList.add('visible'); }, 6000);
   });
 
   updateHomeCount();
@@ -2211,8 +2213,8 @@ function playIntroAnimation() {
       ic.restore();
     }
 
-    // Text fades in — linear over 0.10, exactly mirrors the fade-out pace
-    const nameP = Math.min(1, Math.max(0, (p-0.78)/0.10));
+    // Text fades in — starts p=0.65, window 0.25 (~6s), linear mirrors fade-out
+    const nameP = Math.min(1, Math.max(0, (p-0.65)/0.25));
     const nameAlphaCurved = nameP * nameFade;
 
     if (nameAlphaCurved > 0.002) {
