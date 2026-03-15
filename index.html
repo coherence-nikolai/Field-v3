@@ -981,6 +981,21 @@ b, strong { font-weight: 400; }
 }
 .integrate-witnessed.visible { opacity: 1; }
 
+.integrate-insight {
+  font-family: var(--sans);
+  font-size: clamp(14px,3.5vw,17px);
+  letter-spacing: .10em;
+  color: rgba(152,128,184,.72);
+  text-align: center;
+  line-height: 1.7;
+  max-width: 78vw;
+  opacity: 0;
+  transition: opacity 2s ease;
+  margin-top: clamp(14px,3.5vw,20px);
+  font-style: italic;
+}
+.integrate-insight.visible { opacity: 1; }
+
 .integrate-thread-wrap {
   display: flex;
   flex-direction: column;
@@ -1296,6 +1311,7 @@ body.fs-large .enter-question { font-size: clamp(26px,7vw,40px); }
   <div class="phase-name" id="pname-integrate"></div>
 
   <div class="integrate-witnessed" id="integrateWitnessed"></div>
+  <div class="integrate-insight" id="integrateInsight"></div>
   <div class="integrate-whisper" id="integrateWhisper"></div>
 
   <div class="integrate-thread-wrap" id="integrateThreadWrap">

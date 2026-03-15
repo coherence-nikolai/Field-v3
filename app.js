@@ -358,17 +358,20 @@ class BreathOrb {
 
     } else if (this.phase === 'inhale' || this.phase === 'hold' ||
                this.phase === 'exhale' || this.phase === 'rest') {
-      // ── CONTINUOUS BREATH — one smooth curve, no phase boundaries ──
+      // ── CONTINUOUS BREATH — pure sin curve, no modulo, no jumps ──
       const CYCLE = this.INHALE + this.HOLD + this.EXHALE + this.REST;
       if (this.breathClock === undefined) this.breathClock = 0;
-      this.breathClock += 16;
-      const ct  = this.breathClock % CYCLE;
+      this.breathClock += 16; // never reset — runs forever
+
+      // Position within current cycle (0→1), no modulo discontinuity
+      const cyclesSoFar = Math.floor(this.breathClock / CYCLE);
+      const ct  = this.breathClock - cyclesSoFar * CYCLE;
       const cp  = ct / CYCLE;
       const iP  = this.INHALE / CYCLE;
       const hP  = (this.INHALE + this.HOLD) / CYCLE;
       const eP  = (this.INHALE + this.HOLD + this.EXHALE) / CYCLE;
 
-      // Smooth breathP: 0=contracted, 1=fully expanded
+      // breathP: 0=contracted/bright, 1=expanded/dim
       let breathP;
       if (cp < iP) {
         const x = cp / iP;
@@ -379,23 +382,20 @@ class BreathOrb {
         const x = (cp - hP) / (eP - hP);
         breathP = 1 - (x < 0.5 ? 2*x*x : 1-Math.pow(-2*x+2,2)/2);
       } else {
-        const x = (cp - eP) / (1 - eP);
-        breathP = 0.05 * (1 - x); // gentle rest near zero
+        breathP = Math.max(0, 1 - (cp - eP) / (1 - eP)) * 0.04;
       }
 
       tR = 9 + (this.MAX_RADIUS - 9) * breathP;
       tB = breathP * 11;
-      // Pure smooth curve — glow inversely follows breathP with no conditionals
-      // Bright when contracted (exhale/rest), dim when expanded (inhale/hold)
-      // cycleCount bonus eases in gradually, never jumps
+      // Pure glow formula — no conditionals
       const cycleBonus = Math.min(this.cycleCount / this.maxCycles, 1) * 0.6;
       tG = 0.42 + (0.85 + cycleBonus) * (1 - breathP);
 
-      // Phase change events for audio/text/dots — fired once per crossing
-      const prevCt = Math.max(0, this.breathClock - 16) % CYCLE;
-      const prevCp = prevCt / CYCLE;
+      // Phase crossings — use cyclesSoFar + cp to detect transitions cleanly
+      const prevCt  = Math.max(0, this.breathClock - 16) - cyclesSoFar * CYCLE;
+      const prevCp  = Math.max(0, prevCt) / CYCLE;
 
-      if (prevCp > 0.95 && cp < 0.05) {
+      if (prevCp > 0.96 && cp < 0.04) {
         if (this.onPhaseChange) this.onPhaseChange('inhale', this.cycleCount);
       }
       if (prevCp < hP && cp >= hP) {
@@ -409,7 +409,6 @@ class BreathOrb {
         this.cycleCount++;
         if (this.onPhaseChange) this.onPhaseChange('rest', this.cycleCount - 1);
         if (this.cycleCount >= this.maxCycles) {
-          this.breathClock = 0;
           this.startPhase('crystallised');
           if (this.onCyclesDone) setTimeout(() => this.onCyclesDone(), 600);
         }
@@ -643,9 +642,8 @@ function tryDrone() {
 function startDrone() {
   if (droneNodes.length) return;
   // Two-tone drone: rose wave = warm 396Hz, violet wave = cool 528Hz
-  // Two distinct frequencies representing the two polarities
-  const roseFreqs   = [[396,0.014],[198,0.008],[99,0.005]];   // warm, low, grounding
-  const violetFreqs = [[528,0.011],[264,0.007],[792,0.004]];   // cool, high, expansive
+  const roseFreqs   = [[396,0.014],[198,0.008],[99,0.005]];
+  const violetFreqs = [[528,0.011],[264,0.007],[792,0.004]];
   [...roseFreqs, ...violetFreqs].forEach(([f,g]) => {
     const o = audioCtx.createOscillator();
     const gn = audioCtx.createGain();
@@ -657,6 +655,34 @@ function startDrone() {
     o.connect(lp); lp.connect(gn); gn.connect(audioCtx.destination); o.start();
     droneNodes.push({o, gn});
   });
+
+  // Harmonic drift — a third quiet tone that slowly moves between harmonics
+  // Creates a living, breathing quality to the drone without being distracting
+  try {
+    const driftOsc = audioCtx.createOscillator();
+    const driftGain = audioCtx.createGain();
+    const driftLp = audioCtx.createBiquadFilter();
+    driftLp.type = 'lowpass'; driftLp.frequency.value = 600;
+    driftOsc.type = 'sine';
+    driftOsc.frequency.value = 462; // between rose and violet harmonics
+
+    // Very slow frequency drift — 40 second cycle, nearly imperceptible
+    const now = audioCtx.currentTime;
+    driftOsc.frequency.setValueAtTime(462, now);
+    driftOsc.frequency.linearRampToValueAtTime(396, now + 20);
+    driftOsc.frequency.linearRampToValueAtTime(528, now + 40);
+    driftOsc.frequency.linearRampToValueAtTime(462, now + 60);
+    driftOsc.frequency.linearRampToValueAtTime(396, now + 80);
+    driftOsc.frequency.linearRampToValueAtTime(528, now + 100);
+    driftOsc.frequency.linearRampToValueAtTime(462, now + 120);
+
+    driftGain.gain.setValueAtTime(0, now);
+    driftGain.gain.linearRampToValueAtTime(0.006, now + 8); // very quiet
+    driftOsc.connect(driftLp); driftLp.connect(driftGain);
+    driftGain.connect(audioCtx.destination);
+    driftOsc.start();
+    droneNodes.push({o: driftOsc, gn: driftGain});
+  } catch(e) {}
 }
 
 function fadeDrone(out = true, dur = 2) {
@@ -1718,6 +1744,10 @@ function launchIntegrate() {
     };
   }
 
+  // AI insight question
+  const insightEl = document.getElementById('integrateInsight');
+  if (insightEl) { insightEl.textContent = ''; insightEl.classList.remove('visible'); }
+
   // Log session
   const n = parseInt(lsGet('f2_sessions') || '0') + 1;
   lsSet('f2_sessions', n);
@@ -1725,10 +1755,36 @@ function launchIntegrate() {
 
   showBackBtn(() => goHome());
   showScreen('s-integrate', () => {
+    // Witnessed sentence — arrives first
     setTimeout(() => { if (isAlive(tok) && witnessedEl) witnessedEl.classList.add('visible'); }, 600);
-    setTimeout(() => { if (isAlive(tok) && whisperEl && lastThread) whisperEl.classList.add('visible'); }, 1800);
-    setTimeout(() => { if (isAlive(tok) && threadWrap) { threadWrap.classList.add('visible'); setTimeout(() => threadInp && threadInp.focus(), 200); } }, 3500);
-    setTimeout(() => { if (isAlive(tok) && returnBtn) returnBtn.classList.add('visible'); }, 7000);
+    // Insight question — arrives 3.5s after witnessed, AI-generated
+    setTimeout(() => {
+      if (!isAlive(tok) || !insightEl) return;
+      const apiKey = lsGet('f2_api_key');
+      if (apiKey) {
+        const prompt = `The person was carrying "${currentContraction}" and anchored "${chosenFrequency}". Ask one short open question about what might become possible if they hold both today.`;
+        callClaude(prompt, INSIGHT_SYSTEM).then(res => {
+          if (!isAlive(tok) || !insightEl) return;
+          insightEl.textContent = res || (lang === 'en'
+            ? `What might shift if you held both of these today?`
+            : `¿Qué podría cambiar si sostuvieras ambas cosas hoy?`);
+          insightEl.classList.add('visible');
+        }).catch(() => {
+          insightEl.textContent = lang === 'en'
+            ? `What might shift if you held both of these today?`
+            : `¿Qué podría cambiar si sostuvieras ambas cosas hoy?`;
+          insightEl.classList.add('visible');
+        });
+      } else {
+        insightEl.textContent = lang === 'en'
+          ? `What might shift if you held both of these today?`
+          : `¿Qué podría cambiar si sostuvieras ambas cosas hoy?`;
+        insightEl.classList.add('visible');
+      }
+    }, 3500);
+    setTimeout(() => { if (isAlive(tok) && whisperEl && lastThread) whisperEl.classList.add('visible'); }, 5500);
+    setTimeout(() => { if (isAlive(tok) && threadWrap) { threadWrap.classList.add('visible'); setTimeout(() => threadInp && threadInp.focus(), 200); } }, 7000);
+    setTimeout(() => { if (isAlive(tok) && returnBtn) returnBtn.classList.add('visible'); }, 10000);
   });
 
   updateHomeCount();
@@ -1785,6 +1841,8 @@ const POLARITY_SYSTEM = `You are a field mirror specialising in polarity work. T
 const ANCHOR_SYSTEM = `You are a somatic anchor presence. The person has chosen a frequency state to embody. Your role: one sentence that helps locate this frequency in the body right now. Not "you should" — "this is already here". Max 12 words.`;
 
 const INTEGRATE_SYSTEM = `You are the field at rest. The person completed a session holding two truths simultaneously without resolving either. Your role: one line of quiet witness — not praise, not analysis. The practice is holding, not releasing. Never use the words "release", "let go", or "released". Speak as if the field itself is recognising what they held. Past tense. Max 14 words. Never begin with "I". No exclamation marks.`;
+
+const INSIGHT_SYSTEM = `You are the field offering one forward-facing question. The person just completed a session holding two truths — what they carry and what is also true. Based on their specific contraction and chosen frequency, offer one short question about what might become possible if they hold both today. Not advice, not analysis — a genuine open question. Max 16 words. Start with "What" or "How" or "What if". No exclamation marks.`;
 
 const WHISPER_SYSTEM = `You are a quiet field presence. The person has just named what they are carrying. Your role: one brief recognition — not advice, not comfort. Just acknowledgement that this is real and the field has seen it before. 8 words maximum. No punctuation at the end. Lowercase only.`;
 

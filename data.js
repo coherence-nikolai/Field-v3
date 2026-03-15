@@ -32,7 +32,7 @@ const TRANSLATIONS = {
     bothTrue:       'Both of these are true.\nYou are large enough to hold them.',
 
     // Thread
-    threadPrompt:   'one true thing from this session',
+    threadPrompt:   'what will you carry from this?',
     threadHint:     'speak it or write it',
 
     // Navigation
@@ -73,7 +73,7 @@ const TRANSLATIONS = {
     lightEnd:       'Lo que también es verdad',
     bothTrue:       'Las dos cosas son verdad.\nEres suficientemente grande para sostenerlas.',
 
-    threadPrompt:   'una cosa verdadera de esta sesión',
+    threadPrompt:   '¿qué te llevas de esto?',
     threadHint:     'dilo o escríbelo',
 
     retBtn:         'volver',
