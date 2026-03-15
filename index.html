@@ -825,14 +825,16 @@ b, strong { font-weight: 400; }
 
 .polarity-hold {
   font-family: var(--sans);
-  font-size: clamp(14px,3.5vw,17px);
-  letter-spacing: .16em;
-  color: rgba(237,224,212,.35);
+  font-size: clamp(18px,4.5vw,22px);
+  letter-spacing: .12em;
+  color: rgba(237,224,212,.82);
   text-align: center;
   text-transform: lowercase;
   opacity: 0;
-  transition: opacity 2s ease;
-  margin-top: 4px;
+  transition: opacity 2.5s ease;
+  margin-top: clamp(20px,5vw,32px);
+  padding: 0 24px;
+  line-height: 1.6;
 }
 .polarity-hold.visible { opacity: 1; }
 

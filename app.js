@@ -330,9 +330,9 @@ class BreathOrb {
     this.morphStartY      = 0;
     this.MORPH_DURATION   = 2600;
     this.MORPH_LIFT       = innerHeight * 0.52;
-    // v2 palette: violet-rose
-    this.c1 = '200,160,230'; this.c2 = '170,130,200';
-    this.c3 = '180,140,210'; this.c4 = '220,200,240'; this.c5 = '200,170,225';
+    // Rose/warm palette — orb holds what you carry
+    this.c1 = '220,150,120'; this.c2 = '200,120,90';
+    this.c3 = '210,135,105'; this.c4 = '240,195,170'; this.c5 = '225,160,135';
   }
   get elapsed() { return performance.now() - this.phaseStart; }
   startPhase(name) {
@@ -391,12 +391,20 @@ class BreathOrb {
       this.wordGlowIntensity = 1;
 
     } else if (this.phase === 'morph') {
+      // Bloom outward and dissolve — no upward movement
       const p    = Math.min(t / this.MORPH_DURATION, 1);
-      const ease = p < 0.5 ? 2*p*p : 1 - Math.pow(-2*p+2,2)/2;
-      tR = 12 * (1 - ease * 0.85); tB = 0; tG = 1.5 + ease * 2.2;
+      const ease = p < 0.5 ? 2*p*p : 1-Math.pow(-2*p+2,2)/2;
+      // Expand radius outward
+      tR = 12 + (this.MAX_RADIUS * 0.8) * ease;
+      tB = ease * 18; // bloom blur
+      tG = (1.5 - ease * 1.5); // fade glow to zero
+      this.alpha = 1 - ease; // fade alpha
       this.wordScale = 1 - ease;
-      this.y = this.morphStartY - Math.pow(p, 2) * this.MORPH_LIFT;
-      if (t > this.MORPH_DURATION) { this.phase = 'done'; if (this.onMorphDone) this.onMorphDone(); }
+      // No y movement — stays in place
+      if (t > this.MORPH_DURATION) {
+        this.phase = 'done';
+        if (this.onMorphDone) this.onMorphDone();
+      }
     }
 
     const ls = this.phase === 'exhale' ? 0.038 : 0.028;
@@ -1252,7 +1260,7 @@ function launchAnchor() {
   if (pH)   pH.textContent  = lang === 'en' ? `I am carrying ${displayName}.` : `Estoy cargando ${displayName}.`;
   if (pAnd) pAnd.textContent = lang === 'en' ? 'and' : 'y';
   if (pL)   pL.textContent  = complementTxt;
-  if (pH2)  pH2.textContent = lang === 'en' ? 'Hold both. Don\'t resolve either.' : 'Sostén ambos. No resuelvas ninguno.';
+  if (pH2)  pH2.textContent = lang === 'en' ? 'hold both · neither needs resolving' : 'sostén ambos · ninguno necesita resolverse';
 
   const fwd = document.getElementById('fwdAnchor1');
   if (fwd) { fwd.style.opacity = '0'; fwd.style.pointerEvents = 'none'; fwd.textContent = t.continueBtn; }
@@ -1270,12 +1278,12 @@ function launchAnchor() {
         if (pL) pL.classList.add('visible');
         setTimeout(() => {
           if (!isAlive(tok)) return;
-          if (pH2) pH2.classList.add('visible');
+          if (pH2) pH2.classList.add('visible'); // long pause — let both truths land first
           setTimeout(() => {
             if (!isAlive(tok) || !fwd) return;
             fwd.style.opacity = '1'; fwd.style.pointerEvents = 'all';
-          }, 1400);
-        }, 1200);
+          }, 2000);
+        }, 2500); // 2.5s after light truth appears
       }
     }, 4000);
   });
@@ -1288,8 +1296,8 @@ async function fetchPolarityComplement(tok, pL, fwd, pH2) {
     setTimeout(() => {
       if (!isAlive(tok)) return;
       if (pH2) pH2.classList.add('visible');
-      setTimeout(() => { if (fwd) { fwd.style.opacity='1'; fwd.style.pointerEvents='all'; }}, 1400);
-    }, 1200);
+      setTimeout(() => { if (fwd) { fwd.style.opacity='1'; fwd.style.pointerEvents='all'; }}, 2000);
+    }, 2500);
     return;
   }
   const prompt = `The person is carrying "${currentContraction}". Find the complementary truth — not the opposite, the thing that is ALSO true from lived experience. One sentence, starting with "And". Max 20 words.`;
@@ -1485,19 +1493,19 @@ function startBreath() {
 
   breathOrb.onCyclesDone = () => {
     breathRunning = false;
-    waveRoseYTgt   = WAVE_TOP_FRAC;  // waves return home
-    waveVioletYTgt = WAVE_BOT_FRAC;
     if (btext) btext.style.opacity = '0';
     bDelay(() => {
       if (!breathOrb) return;
-      breathOrb.morphStartY    = breathOrb.y;
+      // Waves return to home positions — timed with orb bloom (MORPH_DURATION = 2600ms)
+      waveRoseYTgt   = WAVE_TOP_FRAC;
+      waveVioletYTgt = WAVE_BOT_FRAC;
       breathOrb.wordTargetAlpha = 0;
-      breathOrb.startPhase('morph');
+      breathOrb.startPhase('morph'); // bloom outward, no upward movement
       breathOrb.onMorphDone = () => {
         requestAnimationFrame(() => { breathOrb = null; });
-        bDelay(() => launchIntegrate(), 400);
+        bDelay(() => launchIntegrate(), 300);
       };
-    }, 600);
+    }, 500);
   };
 
   // Reset breath dots
@@ -1636,11 +1644,11 @@ const POLARITY_SYSTEM = `You are a field mirror specialising in polarity work. T
 
 const ANCHOR_SYSTEM = `You are a somatic anchor presence. The person has chosen a frequency state to embody. Your role: one sentence that helps locate this frequency in the body right now. Not "you should" — "this is already here". Max 12 words.`;
 
-const INTEGRATE_SYSTEM = `You are the field at rest. The person completed a session and wrote one true thing. Your role: one line of quiet affirmation — not praise, not analysis. Just presence acknowledging presence. Speak as if the field itself is recognising them. Max 14 words. Never begin with "I". No exclamation marks.`;
+const INTEGRATE_SYSTEM = `You are the field at rest. The person completed a session holding two truths simultaneously without resolving either. Your role: one line of quiet witness — not praise, not analysis. The practice is holding, not releasing. Never use the words "release", "let go", or "released". Speak as if the field itself is recognising what they held. Past tense. Max 14 words. Never begin with "I". No exclamation marks.`;
 
 const WHISPER_SYSTEM = `You are a quiet field presence. The person has just named what they are carrying. Your role: one brief recognition — not advice, not comfort. Just acknowledgement that this is real and the field has seen it before. 8 words maximum. No punctuation at the end. Lowercase only.`;
 
-const WITNESSED_SYSTEM = `You are the field completing a session. You know: what the person was carrying, where it lived in their body, what frequency they anchored, and what one true thing they wrote. Speak one sentence that witnesses this specific session — not generic, not praise. As if the field itself is reflecting back exactly what happened. Past tense. Max 16 words. No exclamation marks.`;
+const WITNESSED_SYSTEM = `You are the field completing a session. You know: what the person was carrying, where it lived in their body, what frequency they anchored, and what one true thing they wrote. The practice is holding both truths simultaneously without resolving either. Never use the words "release", "let go", or "released". Speak one sentence that witnesses this specific session — not generic, not praise. As if the field itself is reflecting back exactly what was held. Past tense. Max 16 words. No exclamation marks.`;
 
 // ── INTERFERENCE FLASH — field recognises what was named ──
 function triggerInterferenceFlash() {
