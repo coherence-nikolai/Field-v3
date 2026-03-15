@@ -752,7 +752,7 @@ b, strong { font-weight: 400; }
   font-family: var(--sans);
   font-size: var(--fl);
   letter-spacing: .14em;
-  color: var(--rose-dim);
+  color: rgba(237,200,175,.90);
   background: none; border: none;
   cursor: pointer;
   padding: 14px 28px; min-height: 48px;
@@ -760,19 +760,20 @@ b, strong { font-weight: 400; }
   transition: color .4s ease;
   animation: pulse 2.8s ease-in-out infinite;
 }
-.phase-forward:hover { color: var(--rose); }
+.phase-forward:hover { color: rgba(255,225,200,1); }
 .phase-forward.pinned {
   position: fixed;
   bottom: 32px;
   left: 50%; transform: translateX(-50%);
-  background: rgba(8,6,16,.92);
-  border: 1px solid rgba(200,130,110,.2);
+  background: rgba(12,8,20,.95);
+  border: 1px solid rgba(200,130,110,.50);
   border-radius: 999px;
-  padding: 14px 36px;
+  padding: 16px 44px;
   opacity: 0;
   pointer-events: none;
   z-index: 50;
   white-space: nowrap;
+  box-shadow: 0 0 24px rgba(200,130,110,.15);
 }
 .phase-forward.pinned.ready {
   opacity: 1;

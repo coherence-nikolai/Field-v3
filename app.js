@@ -1577,16 +1577,52 @@ function startBreath() {
   breathRunning = true;
   bgDimTgt = 0.25;
 
-  // Orb starts at centre
-  const startX = innerWidth  * 0.5;
-  const startY = innerHeight * 0.5;
+  const centreX = innerWidth  * 0.5;
+  const centreY = innerHeight * 0.5;
 
   setWaveState('breath');
 
-  breathOrb = new BreathOrb(startX, startY);
+  // Particle migration — pick a random nearby particle or spawn one
+  // It travels to centre over 1.5s, then the orb emerges from it
+  let migrantX = centreX + (Math.random()-0.5) * innerWidth  * 0.4;
+  let migrantY = centreY + (Math.random()-0.5) * innerHeight * 0.25;
+
+  // Use existing particle if one is close enough
+  if (iParticles.length > 0) {
+    const nearest = iParticles.reduce((a,b) =>
+      Math.hypot(b.x-centreX, b.y-centreY) < Math.hypot(a.x-centreX, a.y-centreY) ? b : a
+    );
+    migrantX = nearest.x;
+    migrantY = nearest.y;
+    nearest.maxLife = 0; // retire it — the orb takes its place
+  }
+
+  // Create orb starting from migrant position
+  breathOrb = new BreathOrb(migrantX, migrantY);
   breathOrb.wordText        = chosenFrequency || currentContraction;
   breathOrb.wordTargetAlpha = 0;
   breathOrb.wordGlowIntensity = 0;
+  breathOrb.alpha = 0; // start invisible
+
+  // Animate orb from migrant position to centre, fade in
+  const MIGRATE_MS = 1600;
+  const startTime = performance.now();
+  const migrateTick = () => {
+    if (!breathOrb || !isAlive(tok)) return;
+    const elapsed = performance.now() - startTime;
+    const mp = Math.min(1, elapsed / MIGRATE_MS);
+    const ease = mp < 0.5 ? 2*mp*mp : 1-Math.pow(-2*mp+2,2)/2;
+    breathOrb.targetX = migrantX + (centreX - migrantX) * ease;
+    breathOrb.targetY = migrantY + (centreY - migrantY) * ease;
+    breathOrb.alpha   = ease;
+    if (mp < 1) requestAnimationFrame(migrateTick);
+    else {
+      breathOrb.targetX = centreX;
+      breathOrb.targetY = centreY;
+      breathOrb.alpha   = 1;
+    }
+  };
+  requestAnimationFrame(migrateTick);
 
   const btext = document.getElementById('breathWord');
   const cues  = BREATH_CUES[lang];
@@ -2085,38 +2121,51 @@ function playIntroAnimation() {
       ic.restore();
     }
 
-    // Text 3: Resonance — slow cinematic bloom
-    const nameP    = Math.min(1, Math.max(0, (p-0.68)/0.18));
-    const nameFade = p > 0.88 ? Math.max(0, 1-(p-0.88)/0.10) : 1;
-    if (nameP > 0.01) {
-      const nameAlpha = nameP * nameFade;
-      const scale = 0.88 + nameP * 0.12;
+    // Text 3: Resonance — glow bloom arrives first, word emerges from it
+    // Glow starts at p=0.62, word starts at p=0.72, hold until p=0.88, fade to black p=0.88-1.0
+    const glowOnlyP = Math.min(1, Math.max(0, (p-0.62)/0.14)); // glow arrives first
+    const nameP     = Math.min(1, Math.max(0, (p-0.72)/0.20)); // word emerges slowly
+    const nameFade  = p > 0.90 ? Math.max(0, 1-(p-0.90)/0.10) : 1;
+
+    if (glowOnlyP > 0.01) {
+      const glowAlpha = glowOnlyP * nameFade;
       ic.save();
-      const fs = Math.min(W*0.14, 64);
+      // Glow bloom — expands as it arrives
+      const glowR = Math.min(W,H) * (0.08 + glowOnlyP * 0.32);
+      const gg = ic.createRadialGradient(W*.5, H*.5, 0, W*.5, H*.5, glowR);
+      gg.addColorStop(0,   `rgba(230,160,120,${(glowAlpha*0.38).toFixed(3)})`);
+      gg.addColorStop(0.4, `rgba(200,130,110,${(glowAlpha*0.18).toFixed(3)})`);
+      gg.addColorStop(1,   'rgba(200,130,110,0)');
+      ic.fillStyle = gg;
+      ic.fillRect(0, 0, W, H);
+      ic.restore();
+    }
+
+    if (nameP > 0.005) {
+      const nameAlpha = nameP * nameFade;
+      const scale = 0.90 + nameP * 0.10; // gentle scale 0.90→1.0
+      ic.save();
+      const fs = Math.min(W*0.13, 60);
       ic.globalAlpha = nameAlpha;
-      const glowR = Math.min(W,H)*(0.12+nameP*0.22);
-      const gg = ic.createRadialGradient(W*.5,H*.5,0,W*.5,H*.5,glowR);
-      gg.addColorStop(0, `rgba(220,150,110,${(nameAlpha*0.32).toFixed(3)})`);
-      gg.addColorStop(1, 'rgba(200,130,110,0)');
-      ic.fillStyle=gg; ic.fillRect(0,0,W,H);
       ic.translate(W*0.5, H*0.5);
       ic.scale(scale, scale);
-      ic.shadowColor=`rgba(200,130,110,${(nameAlpha*0.7).toFixed(2)})`;
-      ic.shadowBlur = 32 + nameP*20;
-      ic.fillStyle='rgba(220,170,140,1)';
-      ic.font=`300 italic ${fs}px 'Cormorant Garamond',Georgia,serif`;
-      ic.textAlign='center'; ic.textBaseline='middle';
+      ic.shadowColor = `rgba(220,160,130,${(nameAlpha*0.65).toFixed(2)})`;
+      ic.shadowBlur  = 24 + nameP * 18;
+      ic.fillStyle   = `rgba(230,185,155,1)`;
+      ic.font        = `300 italic ${fs}px 'Cormorant Garamond',Georgia,serif`;
+      ic.textAlign   = 'center';
+      ic.textBaseline= 'middle';
       ic.fillText('Resonance', 0, 0);
       ic.restore();
     }
 
-    // Fade to black — then endIntroAnimation handles home fade-in
-    if (p > 0.88) {
-      const fadeOut = Math.min(1, (p-0.88)/0.12);
+    // Fade everything to black — smooth, glow and word dissolve together
+    if (p > 0.90) {
+      const fadeOut = Math.min(1, (p-0.90)/0.10);
       ic.save();
       ic.globalAlpha = fadeOut;
-      ic.fillStyle = '#080610';
-      ic.fillRect(0,0,W,H);
+      ic.fillStyle   = '#080610';
+      ic.fillRect(0, 0, W, H);
       ic.restore();
     }
 
