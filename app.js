@@ -435,10 +435,18 @@ class BreathOrb {
       }
     }
 
-    const ls = 0.022; // uniform slow easing — no sudden jumps
+    const ls = 0.022;
     this.dispRadius += ((tR||9)  - this.dispRadius) * ls;
     this.dispBlur   += ((tB||0)  - this.dispBlur)   * ls;
-    this.dispGlow   += ((tG||1)  - this.dispGlow)   * ls;
+    // Glow only moves upward — never dims, only brightens
+    const glowTarget = tG || 1;
+    if (glowTarget > this.dispGlow) {
+      this.dispGlow += (glowTarget - this.dispGlow) * ls;
+    }
+    // Slow gentle decay back to floor (0.85) only — never below
+    else {
+      this.dispGlow = Math.max(0.85, this.dispGlow - 0.004);
+    }
     this.wordAlpha  += (this.wordTargetAlpha - this.wordAlpha) * 0.03;
 
     this.ripples = this.ripples.filter(rp => {
