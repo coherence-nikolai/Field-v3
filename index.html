@@ -1036,6 +1036,61 @@ b, strong { font-weight: 400; }
 .integrate-input:focus { border-bottom-color: rgba(200,130,110,.5); }
 .integrate-input::placeholder { color: rgba(237,224,212,.22); }
 
+.integrate-input-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 480px;
+}
+
+.integrate-mic {
+  flex-shrink: 0;
+  position: relative;
+  width: 42px; height: 42px;
+  border-radius: 50%;
+  background: rgba(152,128,184,.08);
+  border: 1px solid rgba(152,128,184,.22);
+  color: rgba(152,128,184,.55);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+  transition: color .3s ease, border-color .3s ease, background .3s ease;
+}
+.integrate-mic:hover {
+  color: rgba(152,128,184,.85);
+  border-color: rgba(152,128,184,.45);
+}
+.integrate-mic.listening {
+  color: rgba(200,130,110,.9);
+  border-color: rgba(200,130,110,.6);
+  background: rgba(200,130,110,.10);
+}
+.integrate-mic.captured {
+  color: rgba(160,210,160,.9);
+  border-color: rgba(160,210,160,.5);
+  background: rgba(160,210,160,.08);
+}
+.integrate-mic.hidden { display: none; }
+
+.mic-icon { width: 18px; height: 18px; }
+
+.mic-pulse {
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(200,130,110,.5);
+  opacity: 0;
+  pointer-events: none;
+}
+.integrate-mic.listening .mic-pulse {
+  animation: micPulse 1.2s ease-out infinite;
+}
+@keyframes micPulse {
+  0%   { transform: scale(1);   opacity: .6; }
+  100% { transform: scale(1.6); opacity: 0;  }
+}
+
 .integrate-ai-response {
   font-family: var(--serif);
   font-size: clamp(22px,5.5vw,28px);
@@ -1317,8 +1372,17 @@ body.fs-large .enter-question { font-size: clamp(26px,7vw,40px); }
 
   <div class="integrate-thread-wrap" id="integrateThreadWrap">
     <div class="integrate-prompt" id="integratePromptLbl"></div>
-    <input class="integrate-input" id="integrateInput" type="text"
-      autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+    <div class="integrate-input-row">
+      <input class="integrate-input" id="integrateInput" type="text"
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+      <button class="integrate-mic" id="integrateMic" onclick="toggleVoiceNote()" title="speak it">
+        <svg class="mic-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="9" y="2" width="6" height="11" rx="3"/>
+          <path d="M5 10a7 7 0 0014 0M12 19v3M9 22h6"/>
+        </svg>
+        <span class="mic-pulse"></span>
+      </button>
+    </div>
     <div class="integrate-ai-response" id="integrateAI"></div>
   </div>
 

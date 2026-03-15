@@ -388,8 +388,8 @@ class BreathOrb {
       tR = 9 + (this.MAX_RADIUS - 9) * breathP;
       tB = breathP * 11;
       // Pure glow formula — no conditionals
-      const cycleBonus = Math.min(this.cycleCount / this.maxCycles, 1) * 0.6;
-      tG = 0.42 + (0.85 + cycleBonus) * (1 - breathP);
+      const cycleBonus = Math.min(this.cycleCount / this.maxCycles, 1) * 0.55;
+      tG = 0.58 + (0.72 + cycleBonus) * (1 - breathP);
 
       // Phase crossings — use cyclesSoFar + cp to detect transitions cleanly
       const prevCt  = Math.max(0, this.breathClock - 16) - cyclesSoFar * CYCLE;
@@ -1117,6 +1117,7 @@ function updatePatternMirror() {
 
 // ── HOME ──
 function goHome() {
+  if (voiceActive) stopVoiceNote(false);
   nextToken();
   breathOrb = null;
   fadeDrone(true, 1.5);
@@ -1791,6 +1792,7 @@ function launchIntegrate() {
 
   showBackBtn(() => goHome());
   showScreen('s-integrate', () => {
+    initVoiceMic(); // show mic only if speech recognition available
     // Witnessed sentence — arrives first
     setTimeout(() => { if (isAlive(tok) && witnessedEl) witnessedEl.classList.add('visible'); }, 600);
     // Insight question — arrives 3.5s after witnessed, AI-generated
@@ -1824,6 +1826,77 @@ function launchIntegrate() {
   });
 
   updateHomeCount();
+}
+
+// ── VOICE NOTING ──
+let voiceRecognition = null;
+let voiceActive = false;
+
+function initVoiceMic() {
+  const mic = document.getElementById('integrateMic');
+  if (!mic) return;
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { mic.classList.add('hidden'); return; } // not supported — hide cleanly
+  mic.classList.remove('hidden');
+}
+
+function toggleVoiceNote() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return;
+  if (voiceActive) {
+    stopVoiceNote();
+  } else {
+    startVoiceNote();
+  }
+}
+
+function startVoiceNote() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return;
+  const mic = document.getElementById('integrateMic');
+  const inp = document.getElementById('integrateInput');
+
+  try {
+    voiceRecognition = new SR();
+    voiceRecognition.lang = lang === 'es' ? 'es-CL' : 'en-US';
+    voiceRecognition.continuous = false;
+    voiceRecognition.interimResults = false;
+    voiceRecognition.maxAlternatives = 1;
+
+    voiceRecognition.onstart = () => {
+      voiceActive = true;
+      if (mic) mic.classList.add('listening');
+    };
+
+    voiceRecognition.onresult = (e) => {
+      const transcript = e.results[0][0].transcript;
+      if (inp && transcript) {
+        inp.value = transcript;
+        inp.dispatchEvent(new Event('input'));
+      }
+      stopVoiceNote(true);
+    };
+
+    voiceRecognition.onerror = () => { stopVoiceNote(false); };
+    voiceRecognition.onend   = () => { if (voiceActive) stopVoiceNote(false); };
+
+    voiceRecognition.start();
+  } catch(e) {
+    if (mic) mic.classList.add('hidden');
+  }
+}
+
+function stopVoiceNote(captured = false) {
+  voiceActive = false;
+  const mic = document.getElementById('integrateMic');
+  try { if (voiceRecognition) voiceRecognition.stop(); } catch(e) {}
+  voiceRecognition = null;
+  if (!mic) return;
+  mic.classList.remove('listening');
+  if (captured) {
+    mic.classList.add('captured');
+    setTimeout(() => mic.classList.remove('captured'), 1800);
+  }
 }
 
 async function submitThread(tok) {
@@ -2183,12 +2256,27 @@ function playIntroAnimation() {
   let skipping = false;
 
   const onTap = (e) => {
-    // Start audio on first tap regardless
+    // iOS requires gesture before AudioContext — fire audio on first tap
     if (!audioStarted) {
       audioStarted = true;
-      initAudio();
-      resumeAudio();
-      setTimeout(() => playIntroAudio(), 100);
+      // Small timeout lets iOS fully process the gesture before we touch AudioContext
+      setTimeout(() => {
+        try {
+          if (!audioCtx || audioCtx.state === 'closed') {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          }
+          const go = () => {
+            playIntroAudio();
+            // Prime drone so it's ready when home arrives
+            if (!droneNodes.length) startDrone();
+          };
+          if (audioCtx.state === 'suspended') {
+            audioCtx.resume().then(go).catch(() => {});
+          } else {
+            go();
+          }
+        } catch(e) { console.warn('iOS audio init failed:', e.message); }
+      }, 80); // 80ms — enough for iOS gesture to register
     }
     // Only skip if past the 2s mark
     if (t > 120 && !skipping) {
@@ -2387,7 +2475,14 @@ if (!introPlayed) {
   const startAudio = () => {
     document.removeEventListener('touchstart', startAudio);
     document.removeEventListener('click', startAudio);
-    initAudio(); tryDrone();
+    initAudio();
+    if (audioCtx) {
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume().then(() => tryDrone()).catch(() => {});
+      } else {
+        tryDrone();
+      }
+    }
   };
   document.addEventListener('touchstart', startAudio, {once: true, passive: true});
   document.addEventListener('click', startAudio, {once: true});
